@@ -39,17 +39,17 @@ Single project: package `src/ankivoice/`, tests `tests/{unit,integration,live}/`
 
 **Purpose**: project skeleton, test harness, fixtures.
 
-- [ ] T001 Create the package + test tree: `src/ankivoice/__init__.py`, and empty dirs
+- [x] T001 Create the package + test tree: `src/ankivoice/__init__.py`, and empty dirs
   `tests/unit/`, `tests/integration/`, `tests/live/`, `tests/fixtures/`, `scripts/` (per plan.md).
-- [ ] T002 Configure `pyproject.toml`: confirm runtime deps (kokoro, genanki, python-telegram-bot[ext],
+- [x] T002 Configure `pyproject.toml`: confirm runtime deps (kokoro, genanki, python-telegram-bot[ext],
   soundfile, numpy, python-dotenv) and dev deps (pytest, pytest-asyncio, pytest-mock); add
   `[tool.pytest.ini_options]` with `markers = ["live: real Kokoro+apkg, opt-in"]`,
   `addopts = "-m 'not live'"`, `asyncio_mode = "auto"`, and `testpaths = ["tests"]`.
-- [ ] T003 [P] Create `tests/fixtures/sample_deck.txt`: a realistic tab-separated Anki export with
+- [x] T003 [P] Create `tests/fixtures/sample_deck.txt`: a realistic tab-separated Anki export with
   leading `#separator:tab` / `#html:true` headers, several valid Front⇥Back cards, a field with HTML
   entities (`&amp;`, `&#39;`), a CSV double-quote-wrapped field, one empty-Back row, one empty-Front
   (valid Back) row, and one line with no TAB.
-- [ ] T004 [P] Create `tests/conftest.py`: fixtures for a temp work dir, `FakeSynthesizer`
+- [x] T004 [P] Create `tests/conftest.py`: fixtures for a temp work dir, `FakeSynthesizer`
   (deterministic float32 samples, configurable `sample_rate=24000`, counts calls for dedupe asserts),
   `FakeSender` (records ordered `send_document`/`send_message` calls, can be set to fail a given send),
   and a `sample_deck_bytes` loader.

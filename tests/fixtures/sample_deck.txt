@@ -1,0 +1,11 @@
+#separator:tab
+#html:true
+#columns:Front	Back
+greeting	Hello, how are you today?
+thanks	Thank you very much for your help.
+ampersand	Tom &amp; Jerry &#39;run&#39; very fast.
+quote	"She said, ""Hello there!"" to me."
+	This sentence has no prompt on the front.
+weather	The weather is really lovely this morning.
+lonely-front	
+ThisLineHasNoTabAtAll
