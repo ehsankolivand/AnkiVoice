@@ -169,14 +169,14 @@ restart requeues in-progress jobs; handler replies queue position and declines a
 
 ### Telegram bot layer (test-first)
 
-- [ ] T026 [P] [US2] Write FAILING `tests/integration/test_bot_handlers.py` (PTB `Update`/`Bot` faked,
+- [x] T026 [P] [US2] Write FAILING `tests/integration/test_bot_handlers.py` (PTB `Update`/`Bot` faked,
   no network): `on_document` rejects `file_size > MAX_FILE_BYTES` (TOO_LARGE message, no job); declines
   when `has_active_job` (friendly message, no job); otherwise saves the upload into a new `job_<id>/`
   dir, enqueues, and replies the queue position; `/start`/`/help` return usage text.
-- [ ] T027 [US2] Implement `src/ankivoice/bot.py` (`build_application`, document + command handlers,
+- [x] T027 [US2] Implement `src/ankivoice/bot.py` (`build_application`, document + command handlers,
   `TelegramSender` implementing `delivery.Sender`, worker wiring via `post_init`/`post_shutdown`) to
   pass T026.
-- [ ] T028 [US2] Implement `src/ankivoice/__main__.py` entrypoint: `load_config` →
+- [x] T028 [US2] Implement `src/ankivoice/__main__.py` entrypoint: `load_config` →
   `JobStore(...).requeue_in_progress()` → build `KokoroSynthesizer` → `build_application` →
   `app.run_polling()`.
 
