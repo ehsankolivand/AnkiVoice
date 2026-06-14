@@ -84,49 +84,49 @@ native-accent audio of the answer on reveal (with a replay button), original tex
 
 ### Parser (load-bearing, test-first)
 
-- [ ] T009 [P] [US1] Write FAILING `tests/unit/test_parser.py`: `clean_for_speech` decodes HTML
+- [x] T009 [P] [US1] Write FAILING `tests/unit/test_parser.py`: `clean_for_speech` decodes HTML
   entities + strips one layer of CSV quotes (un-doubles `""`); `parse_deck` skips `#` headers, splits
   on first TAB (extra columns ignored), allows empty Front, skips+counts empty-Back and no-TAB rows,
   preserves original Front/Back byte-for-byte, and raises `WRONG_FORMAT` (no TAB anywhere / undecodable
   UTF-8), `EMPTY` (zero usable), `TOO_MANY_CARDS` (> max).
-- [ ] T010 [US1] Implement `src/ankivoice/parser.py` to pass T009.
+- [x] T010 [US1] Implement `src/ankivoice/parser.py` to pass T009.
 
 ### Speech wrapper (load-bearing, test-first)
 
-- [ ] T011 [P] [US1] Write FAILING `tests/unit/test_speech_wrapper.py`: with `kokoro.KPipeline` MOCKED
+- [x] T011 [P] [US1] Write FAILING `tests/unit/test_speech_wrapper.py`: with `kokoro.KPipeline` MOCKED
   (no model/network), `KokoroSynthesizer` builds the pipeline ONCE and reuses it, passes
   `repo_id`/`device="cpu"`, sets `torch.set_num_threads(1)`, iterates the generator and concatenates
   chunks to a float32 1-D mono array, and exposes `sample_rate == 24000`.
-- [ ] T012 [US1] Implement `src/ankivoice/speech.py` (`Synthesizer` Protocol + `KokoroSynthesizer`,
+- [x] T012 [US1] Implement `src/ankivoice/speech.py` (`Synthesizer` Protocol + `KokoroSynthesizer`,
   lazy single load, CPU-pinned) to pass T011.
 
 ### MP3 encoding (load-bearing, test-first)
 
-- [ ] T013 [P] [US1] Write FAILING `tests/unit/test_audio.py`: `encode_mp3` turns a short 24 kHz
+- [x] T013 [P] [US1] Write FAILING `tests/unit/test_audio.py`: `encode_mp3` turns a short 24 kHz
   float32 mono array into a real `.mp3` on disk (validate via `ffprobe`/magic bytes: codec mp3, mono,
   ~expected duration); raises a clear error if ffmpeg is missing/fails.
-- [ ] T014 [US1] Implement `src/ankivoice/audio.py` (ffmpeg+libmp3lame via stdin pipe, per research.md)
+- [x] T014 [US1] Implement `src/ankivoice/audio.py` (ffmpeg+libmp3lame via stdin pipe, per research.md)
   to pass T013.
 
 ### Packaging (load-bearing, test-first)
 
-- [ ] T015 [P] [US1] Write FAILING `tests/unit/test_packaging.py`: `build_apkg` builds a `.apkg` from
+- [x] T015 [P] [US1] Write FAILING `tests/unit/test_packaging.py`: `build_apkg` builds a `.apkg` from
   `MediaCard`s + media paths; unzip it and assert `collection.anki2` + `media` JSON map + numbered
   media files; assert the answer template (`afmt`) contains the audio field and the question template
   (`qfmt`) does NOT (answer-only auto-play); deterministic `model_id`/`deck_id`; Note field-count guard;
   `output_name()` derives a safe name from the filename stem with the generic fallback.
-- [ ] T016 [US1] Implement `src/ankivoice/packaging.py` (genanki model/deck/note/package, `[sound:]` in
+- [x] T016 [US1] Implement `src/ankivoice/packaging.py` (genanki model/deck/note/package, `[sound:]` in
   `afmt`, bundled media, `output_name`) to pass T015.
 
 ### Core pipeline + end-to-end (load-bearing, test-first)
 
-- [ ] T017 [P] [US1] Write FAILING `tests/unit/test_pipeline.py`: `build_package(deck_bytes, synth,
+- [x] T017 [P] [US1] Write FAILING `tests/unit/test_pipeline.py`: `build_package(deck_bytes, synth,
   job_dir, …)` parses, synthesizes each UNIQUE `spoken` once (assert `FakeSynthesizer` call count =
   distinct sentences → dedupe by `sha256(spoken)`), encodes per-card MP3s, builds the `.apkg`; original
   text preserved; cleaned text used for audio; media count = usable cards.
-- [ ] T018 [US1] Implement `src/ankivoice/pipeline.py` (`build_package`, per-deck dedupe cache) to pass
+- [x] T018 [US1] Implement `src/ankivoice/pipeline.py` (`build_package`, per-deck dedupe cache) to pass
   T017.
-- [ ] T019 [US1] Write `tests/integration/test_pipeline_e2e.py` (the Constitution-VII end-to-end test):
+- [x] T019 [US1] Write `tests/integration/test_pipeline_e2e.py` (the Constitution-VII end-to-end test):
   `sample_deck.txt` → `build_package` with `FakeSynthesizer` → unzip the `.apkg` and assert it is
   importable (expected entries), one audio per usable card, skipped rows excluded, `afmt` sound tag
   present. Confirm RED against stubs, then GREEN.

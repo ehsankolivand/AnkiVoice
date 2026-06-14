@@ -1,0 +1,82 @@
+"""Anki packaging (load-bearing). research.md Decision 3.
+
+Builds a ``.apkg`` whose ANSWER template renders an ``Audio`` field containing ``[sound:<file>.mp3]``,
+so Anki auto-plays the audio on reveal and shows a replay button (FR-013..016). The question template
+has no audio. Original Front/Back text is placed in the note verbatim (FR-012). Media are bundled by
+filesystem path; the note references them by bare basename.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
+
+import genanki
+
+# Deterministic, hard-coded ids (chosen once) so re-imports update rather than duplicate (research.md).
+MODEL_ID = 1607392319
+DECK_ID = 2059400110
+
+# Question side has NO audio; answer side shows the original Back plus the [sound:] field (auto-play).
+QFMT = "{{Front}}"
+AFMT = "{{FrontSide}}<hr id=answer>{{Back}}<br>{{Audio}}"
+CSS = ".card{font-family:arial;font-size:20px;text-align:center;color:black;background-color:white;}"
+
+_FALLBACK_NAME = "AnkiVoice deck"
+
+
+@dataclass(frozen=True)
+class MediaCard:
+    front: str  # original, preserved (display)
+    back: str  # original, preserved (display)
+    audio_filename: str  # bare basename used inside [sound:...]
+
+
+def output_name(original_filename: str | None) -> str:
+    """Derive a deck/file base name from the user's filename stem, with a generic fallback (FR-031)."""
+    if original_filename:
+        stem = Path(original_filename).name  # drop any directory
+        stem = Path(stem).stem.strip()
+        if stem:
+            return stem
+    return _FALLBACK_NAME
+
+
+def _build_model() -> genanki.Model:
+    return genanki.Model(
+        MODEL_ID,
+        "AnkiVoice Audio",
+        fields=[{"name": "Front"}, {"name": "Back"}, {"name": "Audio"}],
+        templates=[{"name": "Card 1", "qfmt": QFMT, "afmt": AFMT}],
+        css=CSS,
+    )
+
+
+def build_apkg(
+    cards: Sequence[MediaCard],
+    media_paths: Sequence[Path],
+    out_path: Path | str,
+    *,
+    deck_name: str,
+) -> Path:
+    """Build the ``.apkg`` at ``out_path`` and return it.
+
+    Each card becomes a note ``[Front, Back, "[sound:<audio_filename>]"]``. ``media_paths`` are the
+    filesystem paths bundled as media (each basename must match a card's ``audio_filename``).
+    """
+    model = _build_model()
+    deck = genanki.Deck(DECK_ID, deck_name)
+    for card in cards:
+        # genanki derives a stable guid from the fields by default → re-imports update, not duplicate.
+        deck.add_note(
+            genanki.Note(
+                model=model,
+                fields=[card.front, card.back, f"[sound:{card.audio_filename}]"],
+            )
+        )
+    package = genanki.Package(deck)
+    package.media_files = [str(p) for p in media_paths]
+    out_path = Path(out_path)
+    package.write_to_file(str(out_path))
+    return out_path
