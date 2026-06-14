@@ -125,6 +125,18 @@ def output_name(original_filename: str | None) -> str: ...
     # -> safe deck/file base name from the original filename stem, else "AnkiVoice deck" (FR-031).
 ```
 
+## `pipeline.py` — synchronous core: parse → synth → encode → package (load-bearing)
+
+```python
+def build_package(deck_bytes: bytes, synthesizer: Synthesizer, *, job_dir: Path,
+                  max_cards: int, deck_name: str, mp3_quality: str) -> Path: ...
+    # parse_deck(deck_bytes, max_cards) -> for each UNIQUE spoken (dedupe by sha256) call
+    # synthesizer.synthesize + audio.encode_mp3 into job_dir (identical sentences synthesize once);
+    # build_apkg(cards, media_paths, out=job_dir/<name>.apkg, deck_name=deck_name) -> returns apkg path.
+    # Pure/synchronous (CPU-bound) — the worker runs it via asyncio.to_thread. Raises ValidationError
+    # (propagated from the parser) for bad input. (FR-009..016, per-job dedupe = Constitution P1.)
+```
+
 ## `store.py` — durable SQLite job store + state machine (load-bearing)
 
 ```python

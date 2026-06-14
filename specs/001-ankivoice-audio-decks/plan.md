@@ -105,6 +105,7 @@ src/ankivoice/
 ├── speech.py          # Synthesizer Protocol + KokoroSynthesizer (load-bearing)
 ├── audio.py           # encode_mp3() via ffmpeg subprocess (pure)
 ├── packaging.py       # build_apkg() with genanki, answer-side [sound:] (load-bearing)
+├── pipeline.py        # build_package(): synchronous parse→synth→encode→package core (load-bearing)
 ├── store.py           # JobStore: SQLite durable queue + state machine (load-bearing)
 ├── cleanup.py         # remove_job_dir(): scoped deletion guarantee (load-bearing)
 ├── delivery.py        # deliver(): archive→user→clean; Sender Protocol (load-bearing)
@@ -150,10 +151,11 @@ the real engines (live, opt-in). This matches the brief's prescribed repo shape 
 `store.has_active_job(user)` decline (FR-020); else download into a new `WORK_DIR/job_<id>/`, enqueue,
 reply queue position.
 
-**Process** (`worker.py`, one coroutine): `store.claim_next()` (FCFS) → `parser.parse_deck` →
-for each unique `spoken` (sha256 dedupe) run `speech.synthesize` + `audio.encode_mp3` **in a thread**
-(`asyncio.to_thread`, one job at a time) → `packaging.build_apkg`. On `ValidationError`/failure: mark
-`failed`, message the user, scoped-clean. Then dispatch delivery as a separate task and loop.
+**Process** (`worker.py`, one coroutine): `store.claim_next()` (FCFS) → run
+`pipeline.build_package(...)` **in a thread** (`asyncio.to_thread`, one job at a time). `pipeline`
+runs `parser.parse_deck` → for each unique `spoken` (sha256 dedupe) `speech.synthesize` +
+`audio.encode_mp3` → `packaging.build_apkg`. On `ValidationError`/failure: mark `failed`, message the
+user, scoped-clean. Then dispatch delivery as a separate task and loop.
 
 **Deliver** (`delivery.py`, separate task → overlaps next synthesis, FR-019): `send_document` to the
 archive chat first, then to the user, then the "ready" message; only after **both** uploads succeed,
