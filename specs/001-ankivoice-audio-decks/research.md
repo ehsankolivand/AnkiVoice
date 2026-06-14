@@ -196,10 +196,12 @@ long-polling); JobQueue for the worker (it's for scheduled jobs, not a persisten
   (`asyncio.to_thread`) one job at a time. `torch.set_num_threads(1)` bounds CPU (P1).
 - **Per-job dedupe cache**: within a deck, identical `spoken` strings (keyed by `sha256(spoken)`)
   synthesize once. Cache is per-job (lives in the job dir) → keeps disk flat (P5); no cross-job cache.
-- **Restart-resume (FR-021, SC-010)**: on startup, non-terminal in-progress jobs are reset to
-  `queued` and rebuilt from the persisted input file. Tradeoff: a crash *during* the upload step can
-  produce one duplicate **archive** backup on resume — accepted as rare and harmless (the user still
-  gets exactly one correct delivery; cleanup only runs after both uploads succeed).
+- **Restart-resume (FR-021, SC-010)**: on startup, *rebuildable* in-progress jobs
+  (`synthesizing/packaging/uploading`) are reset to `queued` and rebuilt from the persisted input
+  file; `delivered`-but-uncleaned jobs are cleaned (not requeued) so they are never re-delivered.
+  Tradeoff: a crash *mid-delivery* (after a copy is sent but before the job is marked `delivered`) can
+  re-send the package on resume — a rare duplicate to the archive and/or user, accepted as harmless
+  (cleanup only runs after both uploads succeed; the common window is an archive-only duplicate).
 
 ## Resolved configuration defaults (operator-overridable; shipped in `.env.example`)
 

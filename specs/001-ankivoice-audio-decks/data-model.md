@@ -50,12 +50,14 @@ queued/synthesizing/packaging/uploading → failed                       (error 
 - **At most one Job synthesizing at any instant**: only the single worker advances a Job into
   `synthesizing`, and it awaits completion before claiming the next (FR-017, Principle I).
 - **FCFS**: the worker always claims the `queued` Job with the smallest `id` (FR-017).
-- **Restart-resume**: on startup, any Job left in a non-terminal *in-progress* state
-  (`synthesizing, packaging, uploading, delivered`) is reset to `queued` so it is rebuilt and
-  re-delivered from its still-present input file (FR-021, SC-010). Rationale: intermediate artifacts
+- **Restart-resume**: on startup, Jobs left in a *rebuildable* in-progress state
+  (`synthesizing, packaging, uploading`) are reset to `queued` so they are rebuilt and re-delivered
+  from their still-present input file (FR-021, SC-010). `delivered`-but-not-`cleaned` Jobs are NOT
+  requeued (both copies already went out — re-delivering would double-send); instead the worker
+  removes their working dir and marks them `cleaned` at startup. Rationale: intermediate artifacts
   after a crash cannot be trusted; rebuilding from the persisted input is the simplest correct
-  recovery. (Tradeoff: a crash *during* the upload step may produce one duplicate archive copy on
-  resume — accepted as rare and harmless; documented in research.md.)
+  recovery. (Tradeoff: a crash *mid-delivery* may, on resume, re-send the package — a rare duplicate
+  to the archive and/or user; accepted as rare and harmless. See research.md.)
 
 **Queue position** (FR-018): for a given queued Job, position = count of Jobs with state in
 `{queued, synthesizing, packaging}` whose `id` ≤ this Job's `id` (i.e. how many are ahead of or at the
