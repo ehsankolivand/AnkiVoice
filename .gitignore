@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+*.apkg
+*.mp3
+*.wav
+data/
+work/
+tmp/
+.pytest_cache/
+.uv-cache/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+models/
