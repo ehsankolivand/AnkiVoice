@@ -162,7 +162,8 @@ restart requeues in-progress jobs; handler replies queue position and declines a
   a tmp store — worker claims FCFS, runs `pipeline.build_package` via `to_thread`, advances states; only
   ONE synthesis at a time (FakeSynthesizer asserts no overlap); a processing failure → `FAILED` +
   user notified + scoped clean; the next job's synthesis can start while a prior delivery task runs
-  (overlap).
+  (overlap). Burst resilience (SC-007, FR-028): enqueue a burst of several jobs and assert all complete
+  strictly FCFS one-at-a-time without error and the work dir returns to baseline (no accumulation).
 - [ ] T025 [US2] Implement `src/ankivoice/worker.py` (`Worker.run(stop)`, single loop, `to_thread`
   synthesis, dispatch delivery as a separate task) to pass T024.
 
@@ -206,7 +207,8 @@ after both succeed; on upload failure files are retained; deletion outside `WORK
   BEFORE the user (assert order via `FakeSender`), then a "ready" message; only after BOTH succeed →
   `set_state(DELIVERED)` → `remove_job_dir` → `set_state(CLEANED)`; if the archive send fails → not
   delivered, job dir RETAINED, state not `CLEANED`; if the user send fails after archive → retained
-  (resume-safe); never deletes outside the job dir.
+  (resume-safe); never deletes outside the job dir. Privacy (FR-029): assert `FakeSender` received
+  documents ONLY for the archive chat and the requesting user — no other destination.
 - [ ] T032 [US3] Implement `src/ankivoice/delivery.py` (`Sender` Protocol + `deliver`) to pass T031.
 - [ ] T033 [US3] Wire delivery into `src/ankivoice/worker.py` (dispatch `deliver(...)` as a separate
   task → overlaps next synthesis; on terminal processing failure call `remove_job_dir`) and extend
