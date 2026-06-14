@@ -146,25 +146,25 @@ restart requeues in-progress jobs; handler replies queue position and declines a
 
 ### Durable job store (load-bearing, test-first)
 
-- [ ] T020 [P] [US2] Write FAILING `tests/unit/test_store.py`: schema init (WAL); `enqueue`;
+- [x] T020 [P] [US2] Write FAILING `tests/unit/test_store.py`: schema init (WAL); `enqueue`;
   `has_active_job`; one-active-per-user guard (second enqueue refused); `claim_next` = smallest-id
   `QUEUED` → `SYNTHESIZING` (FCFS); `set_state`; `queue_position`; `get`; `list_active`.
-- [ ] T021 [US2] Implement `src/ankivoice/store.py` core to pass T020.
-- [ ] T022 [P] [US2] Write FAILING `tests/integration/test_store_resume.py`: reopening the DB persists
+- [x] T021 [US2] Implement `src/ankivoice/store.py` core to pass T020.
+- [x] T022 [P] [US2] Write FAILING `tests/integration/test_store_resume.py`: reopening the DB persists
   jobs; `requeue_in_progress` resets `SYNTHESIZING/PACKAGING/UPLOADING/DELIVERED` → `QUEUED` and leaves
   `CLEANED/FAILED` terminal.
-- [ ] T023 [US2] Add `requeue_in_progress` + durable-reopen behavior to `src/ankivoice/store.py` to
+- [x] T023 [US2] Add `requeue_in_progress` + durable-reopen behavior to `src/ankivoice/store.py` to
   pass T022.
 
 ### Single worker (load-bearing, test-first)
 
-- [ ] T024 [P] [US2] Write FAILING `tests/unit/test_worker.py`: with `FakeSynthesizer` + `FakeSender` +
+- [x] T024 [P] [US2] Write FAILING `tests/unit/test_worker.py`: with `FakeSynthesizer` + `FakeSender` +
   a tmp store — worker claims FCFS, runs `pipeline.build_package` via `to_thread`, advances states; only
   ONE synthesis at a time (FakeSynthesizer asserts no overlap); a processing failure → `FAILED` +
   user notified + scoped clean; the next job's synthesis can start while a prior delivery task runs
   (overlap). Burst resilience (SC-007, FR-028): enqueue a burst of several jobs and assert all complete
   strictly FCFS one-at-a-time without error and the work dir returns to baseline (no accumulation).
-- [ ] T025 [US2] Implement `src/ankivoice/worker.py` (`Worker.run(stop)`, single loop, `to_thread`
+- [x] T025 [US2] Implement `src/ankivoice/worker.py` (`Worker.run(stop)`, single loop, `to_thread`
   synthesis, dispatch delivery as a separate task) to pass T024.
 
 ### Telegram bot layer (test-first)
@@ -195,22 +195,22 @@ after both succeed; on upload failure files are retained; deletion outside `WORK
 
 ### Scoped cleanup (load-bearing, test-first)
 
-- [ ] T029 [P] [US3] Write FAILING `tests/unit/test_cleanup.py`: `remove_job_dir` deletes a dir inside
+- [x] T029 [P] [US3] Write FAILING `tests/unit/test_cleanup.py`: `remove_job_dir` deletes a dir inside
   `work_root`; RAISES for a target outside `work_root`; refuses a symlink that escapes `work_root`;
   is idempotent when the dir is already gone.
-- [ ] T030 [US3] Implement `src/ankivoice/cleanup.py` (`remove_job_dir`, resolved-path scope assertion)
+- [x] T030 [US3] Implement `src/ankivoice/cleanup.py` (`remove_job_dir`, resolved-path scope assertion)
   to pass T029.
 
 ### Delivery + cleanup orchestration (load-bearing, test-first)
 
-- [ ] T031 [P] [US3] Write FAILING `tests/unit/test_delivery.py`: `deliver` sends to `archive_chat_id`
+- [x] T031 [P] [US3] Write FAILING `tests/unit/test_delivery.py`: `deliver` sends to `archive_chat_id`
   BEFORE the user (assert order via `FakeSender`), then a "ready" message; only after BOTH succeed →
   `set_state(DELIVERED)` → `remove_job_dir` → `set_state(CLEANED)`; if the archive send fails → not
   delivered, job dir RETAINED, state not `CLEANED`; if the user send fails after archive → retained
   (resume-safe); never deletes outside the job dir. Privacy (FR-029): assert `FakeSender` received
   documents ONLY for the archive chat and the requesting user — no other destination.
-- [ ] T032 [US3] Implement `src/ankivoice/delivery.py` (`Sender` Protocol + `deliver`) to pass T031.
-- [ ] T033 [US3] Wire delivery into `src/ankivoice/worker.py` (dispatch `deliver(...)` as a separate
+- [x] T032 [US3] Implement `src/ankivoice/delivery.py` (`Sender` Protocol + `deliver`) to pass T031.
+- [x] T033 [US3] Wire delivery into `src/ankivoice/worker.py` (dispatch `deliver(...)` as a separate
   task → overlaps next synthesis; on terminal processing failure call `remove_job_dir`) and extend
   `tests/unit/test_worker.py` to assert clean-after-both-uploads and disk returns to baseline.
 

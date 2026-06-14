@@ -84,6 +84,16 @@ def fake_sender() -> FakeSender:
 
 
 @pytest.fixture
+def make_sender():
+    """Factory so tests can inject a failing destination, e.g. make_sender(fail_on_chat=999)."""
+
+    def _make(**kwargs) -> FakeSender:
+        return FakeSender(**kwargs)
+
+    return _make
+
+
+@pytest.fixture
 def sample_deck_path() -> Path:
     return FIXTURES / "sample_deck.txt"
 
