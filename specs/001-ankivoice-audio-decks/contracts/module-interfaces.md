@@ -120,6 +120,9 @@ def build_apkg(cards: Sequence[MediaCard], media_paths: Sequence[Path],
     # attaches media_paths, writes the .apkg to out_path, returns out_path.
     # deck_name and out_path stem derive from the user's original filename stem, with a
     # generic fallback ("AnkiVoice deck" / "ankivoice.apkg") when unavailable (FR-031).
+    # An empty Front is replaced by a neutral placeholder so the card is still generated/studyable
+    # (an Anki card with an empty question side is not created). Each note gets a per-row guid so
+    # identical export rows stay distinct cards.
 
 def output_name(original_filename: str | None) -> str: ...
     # -> safe deck/file base name from the original filename stem, else "AnkiVoice deck" (FR-031).

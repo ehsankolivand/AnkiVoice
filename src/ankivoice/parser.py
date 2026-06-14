@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import csv
 import html
+import io
 
 from .errors import ValidationError
 from .models import Card, ParsedDeck
@@ -49,31 +50,41 @@ def parse_deck(raw: bytes, *, max_cards: int) -> ParsedDeck:
             ),
         ) from None
 
-    lines = text.split("\n")
+    # Normalize line endings so \r\n / lone \r neither corrupt a field nor merge rows.
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
 
-    # Skip the leading, contiguous block of Anki header lines (e.g. "#separator:tab"). Once a
-    # non-header line is seen, later '#' lines are treated as data (FR-002).
+    # Skip the leading, contiguous block of Anki header lines (e.g. "#separator:tab"), preserving the
+    # rest verbatim. Once a non-header line is seen, later '#' lines are treated as data (FR-002).
+    lines = text.splitlines(keepends=True)
     start = 0
     while start < len(lines) and lines[start].lstrip().startswith("#"):
         start += 1
-    data_lines = lines[start:]
+    body = "".join(lines[start:])
 
     cards: list[Card] = []
     skipped_empty_back = 0
     saw_tab = False
 
-    for row in csv.reader(data_lines, delimiter="\t", quotechar='"'):
-        if not row or (len(row) == 1 and row[0].strip() == ""):
-            continue  # blank line — not a row, not counted
-        if len(row) < 2:
-            skipped_empty_back += 1  # a real line with no TAB → no Back (FR-008)
-            continue
-        saw_tab = True
-        front, back = row[0], row[1]  # extra columns (row[2:]) ignored (FR-003)
-        if back.strip() == "":
-            skipped_empty_back += 1  # empty Back → cannot be voiced (FR-008)
-            continue
-        cards.append(Card(front=front, back=back, spoken=clean_for_speech(back)))
+    # csv.reader over a StringIO (a file-like) so multiline quoted fields parse correctly; a malformed
+    # file (e.g. an unterminated quote) raises csv.Error → friendly WRONG_FORMAT rather than a crash.
+    try:
+        for row in csv.reader(io.StringIO(body), delimiter="\t", quotechar='"'):
+            if not row or (len(row) == 1 and row[0].strip() == ""):
+                continue  # blank line — not a row, not counted
+            if len(row) < 2:
+                skipped_empty_back += 1  # a real line with no TAB → no Back (FR-008)
+                continue
+            saw_tab = True
+            front, back = row[0], row[1]  # extra columns (row[2:]) ignored (FR-003)
+            if back.strip() == "":
+                skipped_empty_back += 1  # empty Back → cannot be voiced (FR-008)
+                continue
+            cards.append(Card(front=front, back=back, spoken=clean_for_speech(back)))
+    except csv.Error:
+        raise ValidationError(
+            code="WRONG_FORMAT",
+            user_message="I couldn't parse that file — it looks malformed. " + _EXPECTED_FORMAT,
+        ) from None
 
     if not saw_tab:
         raise ValidationError(

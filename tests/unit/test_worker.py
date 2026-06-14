@@ -12,7 +12,7 @@ import pytest
 
 from ankivoice.config import Config
 from ankivoice.models import JobState
-from ankivoice.store import JobStore
+from ankivoice.store import PENDING_INPUT, JobStore
 from ankivoice.worker import Worker
 from tests.conftest import FakeSender, FakeSynthesizer
 
@@ -87,6 +87,44 @@ async def test_processing_failure_marks_failed_notifies_and_cleans(tmp_path):
     assert any(e[0] == "message" and e[1] == 200 for e in sender.events)  # user told why
     assert not (work / f"job_{job.id}").exists()  # no residual files (FR-024)
     assert sender.documents == []  # nothing delivered
+
+
+async def test_resume_abandons_interrupted_uploads(tmp_path):
+    # Regression (self-review HIGH): an upload interrupted before its input was saved must be cleaned
+    # and failed on restart so the user is unblocked.
+    work = tmp_path / "work"
+    work.mkdir()
+    store = JobStore(tmp_path / "jobs.sqlite")
+    cfg = make_config(tmp_path, work)
+    job = store.enqueue(user_id=1, chat_id=1, input_path=PENDING_INPUT, original_filename=None)
+    job_dir = work / f"job_{job.id}"
+    job_dir.mkdir()
+    (job_dir / "partial").write_bytes(b"x")
+    worker = Worker(store=store, synthesizer=FakeSynthesizer(), sender=FakeSender(), config=cfg)
+
+    await worker.resume()
+
+    assert store.get(job.id).state == JobState.FAILED
+    assert not job_dir.exists()
+    assert store.has_active_job(1) is False  # user unblocked
+
+
+async def test_resume_cleans_delivered_but_uncleaned(tmp_path):
+    work = tmp_path / "work"
+    work.mkdir()
+    store = JobStore(tmp_path / "jobs.sqlite")
+    cfg = make_config(tmp_path, work)
+    job = store.enqueue(user_id=1, chat_id=1, input_path="/x", original_filename=None)
+    store.set_state(job.id, JobState.DELIVERED)
+    job_dir = work / f"job_{job.id}"
+    job_dir.mkdir()
+    (job_dir / "deck.apkg").write_bytes(b"x")
+    worker = Worker(store=store, synthesizer=FakeSynthesizer(), sender=FakeSender(), config=cfg)
+
+    await worker.resume()
+
+    assert store.get(job.id).state == JobState.CLEANED  # cleaned, NOT re-delivered
+    assert not job_dir.exists()
 
 
 async def test_one_synthesis_at_a_time_and_fcfs_under_burst(tmp_path):

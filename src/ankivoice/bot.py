@@ -20,9 +20,10 @@ from telegram.ext import (
     filters,
 )
 
+from .cleanup import remove_job_dir
 from .config import Config
 from .models import JobState
-from .store import JobStore
+from .store import PENDING_INPUT, JobStore
 from .worker import Worker
 
 logger = logging.getLogger("ankivoice.bot")
@@ -67,9 +68,10 @@ async def on_document(update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    # 3) accept: enqueue, save the upload inside the job dir, reply queue position (FR-018)
+    # 3) accept: enqueue (input_path PENDING so the worker can't claim it mid-download), save the
+    #    upload inside the job dir, then mark it claimable and reply the queue position (FR-018).
     job = store.enqueue(
-        user_id=user_id, chat_id=chat_id, input_path="pending", original_filename=doc.file_name
+        user_id=user_id, chat_id=chat_id, input_path=PENDING_INPUT, original_filename=doc.file_name
     )
     job_dir = Path(config.work_dir) / f"job_{job.id}"
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -80,6 +82,10 @@ async def on_document(update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception:
         logger.exception("failed to download upload for job %s", job.id)
         store.set_state(job.id, JobState.FAILED, error_reason="download_failed")
+        try:  # scoped cleanup so the failed download leaves no residual files (FR-024)
+            remove_job_dir(job_dir, work_root=config.work_dir)
+        except Exception:
+            logger.exception("failed to clean job dir for job %s", job.id)
         await update.message.reply_text(
             "Sorry, I couldn't download that file. Please try sending it again."
         )

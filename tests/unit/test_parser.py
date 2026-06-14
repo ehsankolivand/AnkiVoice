@@ -101,6 +101,19 @@ def test_too_many_cards():
     assert ei.value.code == "TOO_MANY_CARDS"
 
 
+def test_crlf_line_endings_parse_cleanly():
+    # Regression (self-review): \r\n must not leave a trailing \r in fields or merge rows.
+    deck = parse_deck(b"f1\tSentence one.\r\nf2\tSentence two.\r\n", max_cards=10)
+    assert len(deck.cards) == 2
+    assert deck.cards[0].back == "Sentence one."
+    assert deck.cards[1].back == "Sentence two."
+
+
+def test_lone_cr_line_endings_parse_cleanly():
+    deck = parse_deck(b"f1\tone.\rf2\ttwo.\r", max_cards=10)
+    assert [c.back for c in deck.cards] == ["one.", "two."]
+
+
 def test_no_tab_row_skipped_and_counted():
     raw = b"good\tsentence one\nnotabhere\nalso good\tsentence two\n"
     deck = parse_deck(raw, max_cards=10)

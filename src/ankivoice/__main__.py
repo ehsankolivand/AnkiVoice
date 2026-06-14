@@ -8,6 +8,7 @@ startup (``Worker.resume``). ``run_polling`` is blocking and owns the event loop
 from __future__ import annotations
 
 import logging
+import os
 
 from .bot import build_application
 from .config import load_config
@@ -21,6 +22,15 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     config = load_config()
+
+    # Pin the offline model cache and default the process to OFFLINE (Constitution P4) before any
+    # synthesis. Set ANKIVOICE_ALLOW_DOWNLOADS=1 (e.g. for the warm-up) to permit downloads.
+    if config.model_dir is not None:
+        os.environ.setdefault("HF_HOME", str(config.model_dir))
+    if not os.environ.get("ANKIVOICE_ALLOW_DOWNLOADS"):
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")
+        os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
     store = JobStore(config.db_path)
     synthesizer = KokoroSynthesizer(
         voice=config.default_voice, lang_code=config.lang_code, model_dir=config.model_dir

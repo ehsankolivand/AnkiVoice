@@ -33,10 +33,13 @@ def test_sample_deck_to_importable_apkg(work_dir, fake_synth, sample_deck_bytes)
     con = sqlite3.connect(dbfile)
     try:
         notes = [row[0] for row in con.execute("SELECT flds FROM notes")]
+        card_count = con.execute("SELECT COUNT(*) FROM cards").fetchone()[0]
     finally:
         con.close()
 
     assert len(notes) == 6  # skipped (empty-Back, no-TAB) rows excluded
+    # every usable card is a STUDYABLE card (incl. the empty-Front one) — not just a note
+    assert card_count == 6
     assert all("[sound:" in flds for flds in notes)  # every card auto-plays on reveal
 
     joined = "\n".join(notes)

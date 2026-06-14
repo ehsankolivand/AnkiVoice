@@ -89,3 +89,37 @@ def test_missing_media_file_raises(tmp_path):
     out = tmp_path / "x.apkg"
     with pytest.raises(Exception):
         build_apkg([MediaCard("F", "B", "missing.mp3")], [tmp_path / "missing.mp3"], out, deck_name="x")
+
+
+def _note_and_card_counts(apkg_path, tmp_path):
+    with zipfile.ZipFile(apkg_path) as z:
+        db_name = next(n for n in z.namelist() if n.startswith("collection.anki2"))
+        data = z.read(db_name)
+    dbfile = tmp_path / "counts.anki2"
+    dbfile.write_bytes(data)
+    con = sqlite3.connect(dbfile)
+    try:
+        notes = con.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
+        cards = con.execute("SELECT COUNT(*) FROM cards").fetchone()[0]
+    finally:
+        con.close()
+    return notes, cards
+
+
+def test_empty_front_still_generates_a_studyable_card(tmp_path):
+    # Regression (self-review CRITICAL): an empty Front must still produce a card (FR-003). An Anki
+    # card whose question side renders empty is NOT created, so we substitute a placeholder front.
+    m = _write_mp3(tmp_path / "a.mp3")
+    out = tmp_path / "ef.apkg"
+    build_apkg([MediaCard("", "Answer with no prompt.", "a.mp3")], [m], out, deck_name="d")
+    notes, cards = _note_and_card_counts(out, tmp_path)
+    assert notes == 1 and cards == 1
+
+
+def test_identical_rows_stay_two_distinct_cards(tmp_path):
+    # Regression (self-review): two identical export rows must not collapse into one card on import.
+    m = _write_mp3(tmp_path / "a.mp3")
+    out = tmp_path / "dup.apkg"
+    build_apkg([MediaCard("F", "B", "a.mp3"), MediaCard("F", "B", "a.mp3")], [m], out, deck_name="d")
+    notes, cards = _note_and_card_counts(out, tmp_path)
+    assert notes == 2 and cards == 2

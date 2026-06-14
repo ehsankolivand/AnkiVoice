@@ -8,12 +8,15 @@ so delivery overlaps the next job's synthesis (FR-019).
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Protocol
 
 from .cleanup import remove_job_dir
 from .models import Job, JobState
 from .store import JobStore
+
+logger = logging.getLogger("ankivoice.delivery")
 
 READY_MESSAGE = (
     "✅ Your audio deck is ready! Import it into Anki — when you reveal each answer the audio plays "
@@ -53,8 +56,11 @@ async def deliver(
     await sender.send_document(job.chat_id, apkg_path, filename=filename)
     # Both copies are out — mark DELIVERED immediately so a crash here does not re-deliver (FR-023).
     store.set_state(job.id, JobState.DELIVERED)
-    # 3) friendly confirmation (best-effort: job is already DELIVERED).
-    await sender.send_message(job.chat_id, READY_MESSAGE)
+    # 3) friendly confirmation — BEST-EFFORT: a failure here must not prevent cleanup (FR-024).
+    try:
+        await sender.send_message(job.chat_id, READY_MESSAGE)
+    except Exception:
+        logger.warning("ready-message send failed for job %s; proceeding to cleanup", job.id)
     # 4) only now remove the job's working dir, scoped (FR-023, FR-025, P5).
     remove_job_dir(Path(work_root) / f"job_{job.id}", work_root=work_root)
     store.set_state(job.id, JobState.CLEANED)

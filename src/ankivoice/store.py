@@ -15,6 +15,10 @@ from pathlib import Path
 
 from .models import Job, JobState
 
+# Sentinel input_path used between enqueue and the upload being saved. A job with this path is NOT
+# yet claimable (its input file does not exist), which closes the enqueue→download→claim race.
+PENDING_INPUT = "pending"
+
 # Non-terminal states = an "active" job for the one-job-per-user rule (FR-020).
 _ACTIVE = (
     JobState.QUEUED,
@@ -110,9 +114,11 @@ class JobStore:
 
     def claim_next(self) -> Job | None:
         with self._lock:
+            # Only claim QUEUED jobs whose input file has actually been saved (input_path is no longer
+            # the PENDING_INPUT sentinel) — never start a job mid-download (FR-017).
             row = self._conn.execute(
-                "SELECT * FROM jobs WHERE state=? ORDER BY id ASC LIMIT 1",
-                (JobState.QUEUED.value,),
+                "SELECT * FROM jobs WHERE state=? AND input_path != ? ORDER BY id ASC LIMIT 1",
+                (JobState.QUEUED.value, PENDING_INPUT),
             ).fetchone()
             if row is None:
                 return None
@@ -152,6 +158,14 @@ class JobStore:
     def list_in_state(self, state: JobState) -> list[Job]:
         rows = self._conn.execute(
             "SELECT * FROM jobs WHERE state=? ORDER BY id ASC", (state.value,)
+        ).fetchall()
+        return [_row_to_job(r) for r in rows]
+
+    def list_abandoned_uploads(self) -> list[Job]:
+        """QUEUED jobs whose input never finished saving (upload interrupted, e.g. by a restart)."""
+        rows = self._conn.execute(
+            "SELECT * FROM jobs WHERE state=? AND input_path=? ORDER BY id ASC",
+            (JobState.QUEUED.value, PENDING_INPUT),
         ).fetchall()
         return [_row_to_job(r) for r in rows]
 

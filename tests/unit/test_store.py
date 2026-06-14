@@ -1,7 +1,7 @@
 """T020 — durable SQLite job store + state machine (load-bearing). FR-017,018,020."""
 
 from ankivoice.models import JobState
-from ankivoice.store import JobStore
+from ankivoice.store import PENDING_INPUT, JobStore
 
 
 def _store(tmp_path):
@@ -54,6 +54,23 @@ def test_queue_position(tmp_path):
     s.claim_next()  # a -> synthesizing, still counts as "ahead"
     assert s.queue_position(b.id) == 2
     assert s.queue_position(c.id) == 3
+
+
+def test_claim_next_skips_jobs_whose_input_is_not_saved_yet(tmp_path):
+    # Regression (self-review HIGH): a job is not claimable until its upload is saved.
+    s = _store(tmp_path)
+    j = s.enqueue(user_id=1, chat_id=1, input_path=PENDING_INPUT, original_filename=None)
+    assert s.claim_next() is None  # still "pending" → not claimable
+    s.set_input_path(j.id, "/work/job_1/input.txt")
+    claimed = s.claim_next()
+    assert claimed is not None and claimed.id == j.id
+
+
+def test_list_abandoned_uploads(tmp_path):
+    s = _store(tmp_path)
+    a = s.enqueue(user_id=1, chat_id=1, input_path=PENDING_INPUT, original_filename=None)
+    s.enqueue(user_id=2, chat_id=2, input_path="/real/path", original_filename=None)
+    assert [j.id for j in s.list_abandoned_uploads()] == [a.id]
 
 
 def test_set_state_and_list_active(tmp_path):

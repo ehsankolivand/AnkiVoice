@@ -203,6 +203,20 @@ long-polling); JobQueue for the worker (it's for scheduled jobs, not a persisten
   re-send the package on resume — a rare duplicate to the archive and/or user, accepted as harmless
   (cleanup only runs after both uploads succeed; the common window is an archive-only duplicate).
 
+## Known limitations (v1, from the adversarial self-review)
+
+- **Failed delivery holds the user's active slot until the next restart.** If both the package is
+  built but a delivery upload fails (e.g. the user blocked the bot), the job is retained, not deleted
+  (FR-026), and re-delivered when the service next restarts (FR-021). Per FR-020 the user keeps one
+  active job until then. A periodic in-process retry sweep was deliberately *not* added (it needs a
+  distinct non-active retry state and risks re-delivering jobs that are merely mid-delivery) — out of
+  scope for v1.
+- **Empty-Front placeholder.** An Anki card whose question side renders empty is not generated, so an
+  empty Front (allowed, FR-003) is shown as a neutral placeholder ("(no prompt — reveal the answer)")
+  so the card is studyable and its audio plays. Non-empty Fronts are preserved verbatim (FR-012).
+- **Multiline answer fields** are normalized for line endings; embedded newlines inside a quoted field
+  are preserved by the csv reader, but lone `\r`/`\r\n` are normalized to `\n`.
+
 ## Resolved configuration defaults (operator-overridable; shipped in `.env.example`)
 
 | Key | Default | Reason |

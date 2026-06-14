@@ -24,6 +24,10 @@ AFMT = "{{FrontSide}}<hr id=answer>{{Back}}<br>{{Audio}}"
 CSS = ".card{font-family:arial;font-size:20px;text-align:center;color:black;background-color:white;}"
 
 _FALLBACK_NAME = "AnkiVoice deck"
+# An Anki card whose question side renders empty is NOT generated (no studyable card). When the Front
+# is empty (allowed — e.g. a blanked/cloze prompt; FR-003) we show a neutral placeholder so a card is
+# always produced. Only the empty case is affected; non-empty Fronts are preserved verbatim (FR-012).
+_FRONT_PLACEHOLDER = "(no prompt — reveal the answer)"
 
 
 @dataclass(frozen=True)
@@ -67,12 +71,15 @@ def build_apkg(
     """
     model = _build_model()
     deck = genanki.Deck(DECK_ID, deck_name)
-    for card in cards:
-        # genanki derives a stable guid from the fields by default → re-imports update, not duplicate.
+    for index, card in enumerate(cards):
+        front = card.front if card.front.strip() else _FRONT_PLACEHOLDER
+        # guid includes the row index so two identical export rows stay distinct cards (one card per
+        # usable input row) rather than collapsing on import via an identical fields-derived guid.
         deck.add_note(
             genanki.Note(
                 model=model,
-                fields=[card.front, card.back, f"[sound:{card.audio_filename}]"],
+                fields=[front, card.back, f"[sound:{card.audio_filename}]"],
+                guid=genanki.guid_for(deck_name, str(index), card.front, card.back, card.audio_filename),
             )
         )
     package = genanki.Package(deck)

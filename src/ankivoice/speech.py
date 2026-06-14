@@ -31,12 +31,15 @@ def _load_pipeline(*, lang_code: str, repo_id: str, device: str, model_dir: Path
     """Construct a Kokoro pipeline. Heavy + imports torch — patched out in the default test suite."""
     import os
 
+    # Pin the cache BEFORE importing torch/kokoro (which import huggingface_hub and freeze the cache
+    # path at import time) — otherwise ANKIVOICE_MODEL_DIR would be ignored.
+    if model_dir is not None:
+        os.environ.setdefault("HF_HOME", str(model_dir))
+
     import torch
     from kokoro import KPipeline
 
     torch.set_num_threads(1)  # respect the single-core budget (Constitution P1)
-    if model_dir is not None:
-        os.environ.setdefault("HF_HOME", str(model_dir))  # pin the offline model cache
     return KPipeline(lang_code=lang_code, repo_id=repo_id, device=device)
 
 

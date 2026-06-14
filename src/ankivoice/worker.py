@@ -27,6 +27,9 @@ logger = logging.getLogger("ankivoice.worker")
 _GENERIC_FAILURE = (
     "Sorry — something went wrong while processing your deck. Please try again later."
 )
+# Bound in-flight delivery tasks so a delivery stall can't pile up retained job dirs / memory (P1).
+# 2 allows one delivery to overlap the next job's synthesis (FR-019) while staying bounded.
+MAX_PENDING_DELIVERIES = 2
 
 
 class Worker:
@@ -47,18 +50,27 @@ class Worker:
         self._delivery_tasks: set[asyncio.Task] = set()
 
     async def resume(self) -> None:
-        """Make a restart safe: requeue rebuildable jobs; clean delivered-but-uncleaned jobs."""
+        """Make a restart safe: requeue rebuildable jobs; clean delivered-but-uncleaned jobs; and
+        abandon uploads that were interrupted before their input was saved (unblocks the user)."""
         requeued = self.store.requeue_in_progress()
         if requeued:
             logger.info("resume: requeued %d interrupted job(s)", requeued)
         for job in self.store.list_in_state(JobState.DELIVERED):
             self._safe_cleanup(job.id)
             self.store.set_state(job.id, JobState.CLEANED)
+        for job in self.store.list_abandoned_uploads():
+            self._safe_cleanup(job.id)
+            self.store.set_state(job.id, JobState.FAILED, error_reason="upload_interrupted")
 
     async def run(self, stop: asyncio.Event) -> None:
         await self.resume()
         try:
             while not stop.is_set():
+                # backpressure: don't claim the next job while too many deliveries are in flight (P1)
+                while len(self._delivery_tasks) >= MAX_PENDING_DELIVERIES and not stop.is_set():
+                    await asyncio.wait(set(self._delivery_tasks), return_when=asyncio.FIRST_COMPLETED)
+                if stop.is_set():
+                    break
                 job = self.store.claim_next()
                 if job is None:
                     try:
@@ -66,7 +78,10 @@ class Worker:
                     except asyncio.TimeoutError:
                         pass
                     continue
-                await self._process(job)
+                try:
+                    await self._process(job)
+                except Exception:  # never let one job kill the worker (FR-028, SC-007)
+                    logger.exception("unexpected error processing job %s; continuing", job.id)
         finally:
             # let in-flight deliveries finish on shutdown
             if self._delivery_tasks:
@@ -128,3 +143,5 @@ class Worker:
             remove_job_dir(Path(self.config.work_dir) / f"job_{job_id}", work_root=self.config.work_dir)
         except ValueError:
             logger.error("refused to clean an out-of-scope path for job %s", job_id)
+        except Exception:  # e.g. OSError from rmtree — must never kill the worker (FR-028)
+            logger.exception("cleanup failed for job %s; continuing", job_id)
