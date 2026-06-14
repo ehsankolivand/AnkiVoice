@@ -68,13 +68,15 @@ def clean_for_speech(field: str) -> str: ...
     # (and un-double internal "" -> "). Does NOT mutate display text. (FR-011)
 
 def parse_deck(raw: bytes, *, max_cards: int) -> ParsedDeck: ...
-    # Decodes UTF-8; skips leading '#'-prefixed header lines (FR-002);
-    # splits each data row on TAB into Front, Back (FR-003);
+    # Decodes UTF-8 (raises ValidationError(WRONG_FORMAT) on undecodable bytes, FR-004);
+    # skips leading '#'-prefixed header lines (FR-002);
+    # splits each data row on the FIRST TAB into Front, Back; extra columns ignored (FR-003);
+    # Front MAY be empty; only a non-empty Back makes a usable card (FR-003, FR-008);
     # builds Card(front, back, spoken=clean_for_speech(back));
-    # skips + counts rows with empty Back (FR-008);
-    # raises ValidationError(EMPTY) if zero usable cards (FR-005);
-    # raises ValidationError(TOO_MANY_CARDS) if len(cards) > max_cards (FR-007);
-    # raises ValidationError(WRONG_FORMAT) if no row has a TAB / structure unusable (FR-004).
+    # skips + counts rows with empty Back AND rows containing no TAB (FR-008);
+    # raises ValidationError(WRONG_FORMAT) if NO data row contains a TAB (not tab-separated, FR-004);
+    # raises ValidationError(EMPTY) if TABs exist but zero usable cards remain (FR-005);
+    # raises ValidationError(TOO_MANY_CARDS) if len(cards) > max_cards (FR-007).
 ```
 
 ## `speech.py` — speech synthesis wrapper (load-bearing)
@@ -116,6 +118,11 @@ def build_apkg(cards: Sequence[MediaCard], media_paths: Sequence[Path],
     # Builds a deterministic-id note type whose ANSWER template shows the original Back
     # plus [sound:<audio_filename>] (auto-play on reveal + replay button; FR-013..016),
     # attaches media_paths, writes the .apkg to out_path, returns out_path.
+    # deck_name and out_path stem derive from the user's original filename stem, with a
+    # generic fallback ("AnkiVoice deck" / "ankivoice.apkg") when unavailable (FR-031).
+
+def output_name(original_filename: str | None) -> str: ...
+    # -> safe deck/file base name from the original filename stem, else "AnkiVoice deck" (FR-031).
 ```
 
 ## `store.py` — durable SQLite job store + state machine (load-bearing)

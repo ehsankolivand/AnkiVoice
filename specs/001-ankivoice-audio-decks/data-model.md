@@ -82,13 +82,15 @@ Produced by the parser from the saved input file; never persisted.
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `front` | str | Original Front field, preserved byte-for-byte for display (FR-012). |
+| `front` | str | Original Front field, preserved byte-for-byte for display (FR-012). MAY be empty. |
 | `back` | str | Original Back field, preserved byte-for-byte for display (FR-012). |
 | `spoken` | str | Cleaned text for synthesis only: HTML-entity-decoded + CSV-quote-unwrapped (FR-011). Never displayed. |
 
-Parser failure modes (raise a typed validation error with a friendly reason; FR-004..FR-007):
-`WRONG_FORMAT`, `EMPTY` (zero usable cards), `TOO_MANY_CARDS` (> max cards). Oversize file is rejected
-earlier at the handler by byte size (`TOO_LARGE`).
+Usable card = non-empty Back; Front may be empty. Rows with an empty Back or no TAB are skipped and
+counted (`skipped_empty_back`). Parser failure modes (raise a typed validation error with a friendly
+reason; FR-004..FR-007): `WRONG_FORMAT` (undecodable bytes, or no data row contains a TAB), `EMPTY`
+(TABs present but zero usable cards), `TOO_MANY_CARDS` (> max cards). Oversize file is rejected earlier
+at the handler by byte size (`TOO_LARGE`).
 
 ### Deck Package (on-disk output, scoped to job dir)
 

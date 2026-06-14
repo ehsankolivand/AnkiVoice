@@ -8,6 +8,26 @@
 
 **Input**: User description: "AnkiVoice — a chat bot that turns a user's text-based Anki deck into an audio-enhanced Anki package with clear, natural, native-accent English speech for pronunciation practice."
 
+## Clarifications
+
+### Session 2026-06-15
+
+- Q: Is a row with an empty Front but a valid Back usable? → A: Yes — only the Back (answer) is
+  required; an empty Front is allowed (e.g. a cloze/blanked prompt) and still produces a usable card.
+- Q: How are data rows that contain no TAB handled, and when is the input WRONG_FORMAT vs EMPTY? → A:
+  A data row with no TAB has no Back and is skipped and counted (like an empty-Back row). WRONG_FORMAT
+  applies only when no data row contains a TAB at all (the file is not tab-separated) or the bytes are
+  not decodable; EMPTY applies when TABs exist but zero usable cards remain after skipping.
+- Q: What happens when a delivery upload (archive or user) fails? → A: The job is retained (the
+  package is never auto-deleted) and retried when the service next restarts (resume). There is no
+  in-process delivery-retry loop in v1. By contrast, a processing failure (parse/synthesis/packaging)
+  terminates the job as failed and its own scoped files are cleaned up.
+- Q: What text encoding is assumed for the uploaded file? → A: UTF-8 (Anki text exports are UTF-8);
+  bytes that cannot be decoded as UTF-8 are rejected as WRONG_FORMAT with a friendly message.
+- Q: How are the output deck name and delivered file named? → A: From the user's original filename
+  stem (e.g. `vocab.txt` → deck "vocab", file `vocab.apkg`); if no usable name is available, fall back
+  to deck "AnkiVoice deck" / file `ankivoice.apkg`.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Turn a valid deck into an audio-enhanced importable package (Priority: P1)
@@ -151,6 +171,12 @@ service continues running, and no residual files remain.
   natural; the displayed field is preserved exactly.
 - **Empty Back on a row**: A row whose Back value is empty cannot be voiced; it is skipped and
   counted. If skipping leaves zero usable cards, the input is treated as empty/invalid.
+- **Empty Front on a row**: A row with an empty Front but a non-empty Back is still a usable card
+  (only the Back is required); the front simply shows nothing.
+- **Row without a TAB**: A data row containing no TAB has no Back and is skipped and counted. If no
+  data row contains a TAB at all, the whole input is rejected as wrong-format (not tab-separated).
+- **Non-UTF-8 bytes**: Input is decoded as UTF-8; bytes that cannot be decoded are rejected as
+  wrong-format with a friendly message.
 - **Duplicate sentences**: Two cards with identical answer sentences each get correct audio for that
   sentence (identical sentences sound identical).
 - **Restart mid-job**: A deck that was queued or mid-processing when the service stopped is resumed
@@ -172,18 +198,21 @@ service continues running, and no residual files remain.
   chat bot.
 - **FR-002**: The system MUST skip leading header lines that begin with `#` (Anki export headers) and
   not treat them as cards.
-- **FR-003**: The system MUST read each data row as a Front field and a Back field, where the Back
-  field is the complete answer sentence.
-- **FR-004**: The system MUST reject, with a clear and specific message, an input that is not in the
-  expected tab-separated Front/Back format.
+- **FR-003**: The system MUST read each data row as a Front field and a Back field (split on the
+  first TAB), where the Back field is the complete answer sentence. The Front MAY be empty; only the
+  Back is required for a usable card. Additional columns beyond Front/Back, if present, are ignored.
+- **FR-004**: The system MUST decode the input as UTF-8 and MUST reject, with a clear and specific
+  message, an input that cannot be decoded or in which no data row contains a TAB (i.e. not
+  tab-separated).
 - **FR-005**: The system MUST reject, with a clear and specific message, an empty input or an input
   that yields zero usable cards.
 - **FR-006**: The system MUST reject, with a clear and specific message stating the limit, an input
   larger than an operator-configured maximum file size.
 - **FR-007**: The system MUST reject, with a clear and specific message stating the limit, an input
   containing more cards than an operator-configured maximum.
-- **FR-008**: The system MUST skip rows whose Back field is empty and count them; a row with an empty
-  Back MUST NOT produce a card.
+- **FR-008**: The system MUST skip (and count) rows whose Back field is empty, as well as data rows
+  that contain no TAB; such rows MUST NOT produce a card. A row with an empty Front but a non-empty
+  Back MUST still produce a usable card.
 
 **Speech & content fidelity**
 
@@ -205,6 +234,9 @@ service continues running, and no residual files remain.
 - **FR-015**: Each card MUST provide a replay control that plays the same audio again on demand.
 - **FR-016**: The package MUST include the generated audio for every usable card as bundled media so
   playback works after import without any further download.
+- **FR-031**: The output deck name and delivered package filename MUST be derived from the user's
+  original filename stem (e.g. `vocab.txt` → deck "vocab", file `vocab.apkg`), falling back to deck
+  "AnkiVoice deck" / file `ankivoice.apkg` when no usable name is available.
 
 **Queue, fairness & durability**
 
@@ -227,11 +259,14 @@ service continues running, and no residual files remain.
 - **FR-023**: The system MUST remove the delivered package and the job's working files only after
   BOTH the archive copy and the user copy have been sent successfully.
 - **FR-024**: The system MUST remove every temporary and output file for a job on both the success
-  and the failure paths, so that disk usage stays flat over time.
+  path and the terminal-failure path (a processing failure — parse, synthesis, or packaging — that
+  ends the job as failed), so that disk usage stays flat over time. (A delivery-upload failure is NOT
+  a terminal failure; see FR-026.)
 - **FR-025**: File removal MUST be scoped strictly to the job's own working area and outputs, and
   MUST NEVER remove anything outside that area.
-- **FR-026**: If either delivery copy fails, the system MUST retain the package (not delete it) so the
-  job can be retried or resumed.
+- **FR-026**: If either delivery copy fails, the system MUST retain the package (not delete it) and
+  retry the job when the service next restarts (resume); it MUST NOT auto-delete an undelivered
+  package. v1 has no in-process delivery-retry loop.
 - **FR-027**: On successful delivery the system MUST send the user a clear, friendly "your deck is
   ready" message.
 
@@ -301,8 +336,13 @@ service continues running, and no residual files remain.
 - **One active job per user**: A user who already has an active (queued or in-progress) job and sends
   another file is told a deck is already being processed and asked to wait; the new file is declined
   rather than creating a second active job.
-- **Empty Back rows**: Rows with an empty Back are skipped and counted; a file with zero usable cards
-  is treated as an invalid/empty input.
+- **Empty Back rows**: Rows with an empty Back (or no TAB) are skipped and counted; a file with zero
+  usable cards is treated as an invalid/empty input. A row with an empty Front but a valid Back is a
+  usable card.
+- **Encoding**: The uploaded file is decoded as UTF-8 (the Anki text-export encoding); undecodable
+  input is rejected as wrong-format.
+- **Output naming**: The deck name and delivered `.apkg` filename are derived from the user's original
+  filename stem, with a generic fallback when unavailable.
 - **Delivery ordering & retry**: The archive copy is sent before the user copy. If either copy fails,
   the package is retained for retry/resume; cleanup happens once delivery is fully complete, and on a
   terminal failure the job's own scoped files are still removed.
