@@ -60,15 +60,15 @@ Single project: package `src/ankivoice/`, tests `tests/{unit,integration,live}/`
 
 **Purpose**: shared types + config that every story imports. **⚠️ Blocks all user stories.**
 
-- [ ] T005 [P] Write FAILING `tests/unit/test_config.py`: `load_config` reads all `ANKIVOICE_*` keys;
+- [x] T005 [P] Write FAILING `tests/unit/test_config.py`: `load_config` reads all `ANKIVOICE_*` keys;
   missing required keys raise `ConfigError` naming each; optional keys get documented defaults
   (voice `af_heart`, lang `a`, max_cards 200, max_file_bytes 2_000_000, sample_rate 24000); never
   hard-codes secrets; optionally loads `.env`.
-- [ ] T006 Implement `src/ankivoice/config.py` (`Config` dataclass + `load_config`) to pass T005.
-- [ ] T007 [P] Write FAILING `tests/unit/test_models_errors.py`: `Card`/`ParsedDeck`/`Job` dataclasses
+- [x] T006 Implement `src/ankivoice/config.py` (`Config` dataclass + `load_config`) to pass T005.
+- [x] T007 [P] Write FAILING `tests/unit/test_models_errors.py`: `Card`/`ParsedDeck`/`Job` dataclasses
   and `JobState` enum values/transitions exist as specified; `ValidationError` carries `code` +
   `user_message`.
-- [ ] T008 Implement `src/ankivoice/models.py` and `src/ankivoice/errors.py` to pass T007.
+- [x] T008 Implement `src/ankivoice/models.py` and `src/ankivoice/errors.py` to pass T007.
 
 **Checkpoint**: config + shared types ready — user stories can begin.
 
