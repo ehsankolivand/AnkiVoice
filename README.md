@@ -1,0 +1,115 @@
+# AnkiVoice
+
+A Telegram bot that turns a text-based Anki deck into an **audio-enhanced `.apkg`** with clear,
+natural, native-accent English speech — generated **locally and offline** with
+[Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) on CPU. Built to run safely on a single-core,
+~4 GB VPS.
+
+Send the bot a tab-separated Anki export (`Front⇥Back`, where Back is the full answer sentence). It
+returns an `.apkg` where **revealing a card's answer auto-plays its audio** and shows a replay button.
+Your original card text is preserved exactly — audio is only added.
+
+Built spec-first with [GitHub Spec Kit](https://github.com/github/spec-kit); the full
+spec/plan/research/tasks live in [`specs/001-ankivoice-audio-decks/`](specs/001-ankivoice-audio-decks/),
+governed by the [project constitution](.specify/memory/constitution.md).
+
+## How it works (module map)
+
+Small, single-responsibility modules under `src/ankivoice/` (Constitution P2 — agent-native):
+
+| Module | Responsibility |
+|--------|----------------|
+| `config.py` | Load all settings from `ANKIVOICE_*` env vars (no hard-coded secrets). |
+| `errors.py` | `ValidationError(code, user_message)` — friendly, actionable. |
+| `models.py` | Shared types: `Card`, `ParsedDeck`, `Job`, `JobState`. |
+| `parser.py` | Parse/validate the tab-separated export; clean text for speech. |
+| `speech.py` | Kokoro wrapper — load once, CPU-only, offline. |
+| `audio.py` | Encode samples to MP3 via an ffmpeg subprocess. |
+| `packaging.py` | Build the `.apkg` (genanki) with answer-side `[sound:]` auto-play + replay. |
+| `pipeline.py` | The synchronous core: parse → synth → encode → package (per-deck dedupe). |
+| `store.py` | Durable SQLite job queue + state machine (FCFS, one-active-per-user, resume). |
+| `cleanup.py` | Scoped deletion — only ever inside the work dir. |
+| `delivery.py` | Deliver to archive → user, then scoped cleanup; retain on failure. |
+| `worker.py` | The single synthesis worker (one at a time; delivery overlaps next synth). |
+| `bot.py` | Telegram long-polling handlers + sender + worker wiring. |
+| `__main__.py` | Entrypoint. |
+
+The flow: **ingest → synthesize → package → deliver**, serialized through the SQLite queue with
+exactly one synthesis at a time; every job's files are cleaned up after delivery (success or failure).
+
+## Prerequisites
+
+- Python 3.12 and [`uv`](https://docs.astral.sh/uv/).
+- System packages **ffmpeg** (with libmp3lame) and **espeak-ng**, on PATH:
+  - macOS: `brew install ffmpeg espeak-ng`
+  - Debian/Ubuntu: `sudo apt-get install -y ffmpeg espeak-ng`
+- A Telegram bot token from [@BotFather] and an operator-owned archive chat/channel id.
+
+## Install
+
+```bash
+uv sync
+```
+
+## Configure (environment only)
+
+Copy `.env.example` to `.env` and fill it in (or export the variables). Required:
+`ANKIVOICE_BOT_TOKEN`, `ANKIVOICE_ARCHIVE_CHAT_ID`. All keys (with defaults):
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `ANKIVOICE_BOT_TOKEN` | — (required) | Bot token (secret). |
+| `ANKIVOICE_ARCHIVE_CHAT_ID` | — (required) | Operator archive destination id. |
+| `ANKIVOICE_DEFAULT_VOICE` | `af_heart` | American-English voice id. |
+| `ANKIVOICE_LANG_CODE` | `a` | `a`=American, `b`=British English. |
+| `ANKIVOICE_MAX_CARDS` | `200` | Per-job card cap. |
+| `ANKIVOICE_MAX_FILE_BYTES` | `2000000` | Max upload size (bytes). |
+| `ANKIVOICE_WORK_DIR` | `./work` | Per-job working dirs (cleaned after delivery). |
+| `ANKIVOICE_DB_PATH` | `./data/ankivoice.db` | SQLite job store. |
+| `ANKIVOICE_MODEL_DIR` | (HF default cache) | Optional offline model cache (sets `HF_HOME`). |
+| `ANKIVOICE_MP3_QUALITY` | `4` | ffmpeg VBR quality. |
+
+## One-time offline warm-up
+
+Downloads the model, the default voice, and the spaCy English model so the bot can run offline after:
+
+```bash
+uv run python scripts/warmup.py
+# then you may run with HF_HUB_OFFLINE=1 for fully offline synthesis
+```
+
+## Run
+
+```bash
+uv run python -m ankivoice          # long-polling; no public TLS / inbound port needed
+```
+
+## Tests
+
+```bash
+uv run pytest          # fast, fully offline default suite (Kokoro + Telegram faked)
+uv run pytest -m live  # opt-in: real Kokoro synthesis + real .apkg (self-skips if unavailable)
+```
+
+The default suite never touches the network or loads the real model. The single `live` test exercises
+the real engines end-to-end and is deselected by default.
+
+## Manual test plan
+
+1. **Start**: set env (`.env`), run `uv run python scripts/warmup.py`, then `uv run python -m ankivoice`.
+2. **Send a deck**: message the bot a tab-separated export (see `tests/fixtures/sample_deck.txt`).
+3. **Queue reply**: confirm the bot replies with your queue position.
+4. **Receive + import**: receive the `.apkg`, import into Anki, reveal each answer → confirm the
+   native audio auto-plays and the replay button works; confirm the displayed text is unchanged.
+5. **Ordering + overlap**: send two files almost at once → confirm strict one-at-a-time processing in
+   arrival order, and that the first deck's delivery overlaps the second's synthesis.
+6. **Cleanup + archive**: after delivery, confirm `ANKIVOICE_WORK_DIR` has no `job_*` files and a copy
+   of the package is in the archive destination.
+7. **Errors**: send a malformed file, an empty file, an oversized file, and one over the card cap →
+   confirm each returns a specific, friendly error and the bot stays healthy.
+
+## License & attribution
+
+Uses Kokoro-82M and voices (Apache-2.0), genanki (MIT), python-telegram-bot (LGPL-3.0, used unmodified
+as a dependency), and ffmpeg/espeak-ng (invoked as separate processes). See
+[`research.md`](specs/001-ankivoice-audio-decks/research.md) for the full dependency/license rundown.

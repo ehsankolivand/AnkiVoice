@@ -226,11 +226,11 @@ friendly message; the service stays healthy; no residual files.
 **Independent Test**: `test_errors_e2e.py`: each bad input yields its specific message via the
 bot/worker path, the store stays consistent, and no job dir remains.
 
-- [ ] T034 [P] [US4] Write FAILING `tests/integration/test_errors_e2e.py` (faked PTB + FakeSynthesizer):
+- [x] T034 [P] [US4] Write FAILING `tests/integration/test_errors_e2e.py` (faked PTB + FakeSynthesizer):
   a wrong-format file → `WRONG_FORMAT` message + no residual files; empty/zero-usable → `EMPTY`
   message; too-many-cards → `TOO_MANY_CARDS` message; oversized upload → `TOO_LARGE` at the handler;
   after each, the service is still healthy and the job dir is gone.
-- [ ] T035 [US4] Complete friendly-error surfacing: `worker.py` catches `ValidationError` → sends
+- [x] T035 [US4] Complete friendly-error surfacing: `worker.py` catches `ValidationError` → sends
   `err.user_message`, sets `FAILED`, scoped-cleans; `bot.py` emits the `TOO_LARGE`/active-job messages.
   Make T034 green.
 
@@ -240,18 +240,18 @@ bot/worker path, the store stays consistent, and no job dir remains.
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T036 [P] Create `.env.example` documenting every `ANKIVOICE_*` key with safe placeholder values
+- [x] T036 [P] Create `.env.example` documenting every `ANKIVOICE_*` key with safe placeholder values
   (no secrets).
-- [ ] T037 [P] Create `scripts/warmup.py`: one-time online download of Kokoro weights + the default
+- [x] T037 [P] Create `scripts/warmup.py`: one-time online download of Kokoro weights + the default
   voice pack + the spaCy `en_core_web_sm` model; prints the cache location and how to enable
   `HF_HUB_OFFLINE=1`.
-- [ ] T038 [P] Write `README.md`: quickstart, env-var table, system deps (ffmpeg, espeak-ng), how to
+- [x] T038 [P] Write `README.md`: quickstart, env-var table, system deps (ffmpeg, espeak-ng), how to
   run (`uv run python -m ankivoice`), how to run tests (default + `-m live`), the module map, and the
   manual test plan from the brief's handoff.
-- [ ] T039 [P] Write `tests/live/test_live_kokoro_apkg.py`: `@pytest.mark.live`, self-skipping (skip if
+- [x] T039 [P] Write `tests/live/test_live_kokoro_apkg.py`: `@pytest.mark.live`, self-skipping (skip if
   the model/voice are not cached or ffmpeg/espeak-ng are missing) — real `KokoroSynthesizer` → real MP3
   → `build_apkg` → reopen and validate the `.apkg` end-to-end. Kept out of the default run.
-- [ ] T040 Run the full default suite (`uv run pytest`) to green; run quickstart.md validation; confirm
+- [x] T040 Run the full default suite (`uv run pytest`) to green; run quickstart.md validation; confirm
   every load-bearing path has a test and `CLAUDE.md`/README are accurate.
 
 ---
