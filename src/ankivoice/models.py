@@ -22,11 +22,16 @@ class ParsedDeck:
 
 
 class JobState(str, Enum):
-    """Persisted job lifecycle (data-model.md)."""
+    """Persisted job lifecycle (data-model.md).
+
+    Cycle 002: ``PACKAGING`` was removed — synthesis and packaging run inside one CPU step
+    (``SYNTHESIZING``); the worker moves a job straight to ``UPLOADING`` the instant the build returns
+    (which is what preserves "at most one SYNTHESIZING"). PACKAGING was only ever set *after* packaging
+    had already finished, so it was a misnomer that no logic meaningfully observed.
+    """
 
     QUEUED = "queued"
     SYNTHESIZING = "synthesizing"
-    PACKAGING = "packaging"
     UPLOADING = "uploading"
     DELIVERED = "delivered"
     CLEANED = "cleaned"  # terminal (success)
@@ -44,3 +49,7 @@ class Job:
     error_reason: str | None
     created_at: str
     updated_at: str
+    # Cycle 002: per-copy delivery idempotency flags so a mid-delivery crash re-sends only the missing
+    # copy and a fully-delivered job is never re-sent (data-model.md, research D8).
+    archive_sent: bool = False
+    user_sent: bool = False

@@ -20,17 +20,22 @@ from .models import Job, JobState
 PENDING_INPUT = "pending"
 
 # Non-terminal states = an "active" job for the one-job-per-user rule (FR-020).
+# Cycle 002: PACKAGING removed (was never observable as a distinct step).
 _ACTIVE = (
     JobState.QUEUED,
     JobState.SYNTHESIZING,
-    JobState.PACKAGING,
     JobState.UPLOADING,
     JobState.DELIVERED,
 )
-# States whose work must be rebuilt from the input file after a restart.
-_REBUILDABLE = (JobState.SYNTHESIZING, JobState.PACKAGING, JobState.UPLOADING)
-# Jobs "ahead in line" when computing a queue position.
-_AHEAD = (JobState.QUEUED, JobState.SYNTHESIZING, JobState.PACKAGING)
+# States whose work must be rebuilt from the input file after a restart. A legacy 'packaging' string
+# from a pre-002 DB is also treated as rebuildable (see requeue_in_progress).
+_REBUILDABLE = (JobState.SYNTHESIZING, JobState.UPLOADING)
+_LEGACY_REBUILDABLE = ("packaging",)
+# Jobs "ahead in line" when computing a queue position: queued + the one currently synthesizing. A job
+# that has finished synthesis and is uploading/delivering no longer blocks a queued job.
+_AHEAD = (JobState.QUEUED, JobState.SYNTHESIZING)
+# Terminal states eligible for the bounded history prune.
+_TERMINAL = (JobState.CLEANED, JobState.FAILED)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -42,11 +47,19 @@ CREATE TABLE IF NOT EXISTS jobs (
     state             TEXT NOT NULL,
     error_reason      TEXT,
     created_at        TEXT NOT NULL,
-    updated_at        TEXT NOT NULL
+    updated_at        TEXT NOT NULL,
+    archive_sent      INTEGER NOT NULL DEFAULT 0,
+    user_sent         INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_state ON jobs(state);
 CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id);
 """
+
+# Additive migration columns for databases created before cycle 002.
+_MIGRATIONS = (
+    ("archive_sent", "ALTER TABLE jobs ADD COLUMN archive_sent INTEGER NOT NULL DEFAULT 0"),
+    ("user_sent", "ALTER TABLE jobs ADD COLUMN user_sent INTEGER NOT NULL DEFAULT 0"),
+)
 
 
 def _now() -> str:
@@ -64,6 +77,8 @@ def _row_to_job(row: sqlite3.Row) -> Job:
         error_reason=row["error_reason"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        archive_sent=bool(row["archive_sent"]),
+        user_sent=bool(row["user_sent"]),
     )
 
 
@@ -78,7 +93,15 @@ class JobStore:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         self._lock = threading.Lock()
+
+    def _migrate(self) -> None:
+        """Additively add cycle-002 columns to a pre-002 database (idempotent)."""
+        existing = {r["name"] for r in self._conn.execute("PRAGMA table_info(jobs)")}
+        for column, ddl in _MIGRATIONS:
+            if column not in existing:
+                self._conn.execute(ddl)
 
     def close(self) -> None:
         self._conn.close()
@@ -102,6 +125,38 @@ class JobStore:
                 (user_id, chat_id, input_path, original_filename, JobState.QUEUED.value, None, now, now),
             )
             job_id = cur.lastrowid
+        return self.get(job_id)  # type: ignore[return-value]
+
+    def enqueue_if_no_active(
+        self, *, user_id: int, chat_id: int, input_path: str, original_filename: str | None
+    ) -> Job | None:
+        """Atomically reserve a slot: insert a QUEUED job IFF the user has no active job, else None.
+
+        The active-check and the insert run inside one IMMEDIATE transaction so two near-simultaneous
+        uploads from the same user can never both create an active job (FR-020, research D9).
+        """
+        now = _now()
+        placeholders = ",".join("?" for _ in _ACTIVE)
+        with self._lock:
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                active = self._conn.execute(
+                    f"SELECT 1 FROM jobs WHERE user_id=? AND state IN ({placeholders}) LIMIT 1",
+                    (user_id, *[s.value for s in _ACTIVE]),
+                ).fetchone()
+                if active is not None:
+                    self._conn.execute("ROLLBACK")
+                    return None
+                cur = self._conn.execute(
+                    "INSERT INTO jobs (user_id, chat_id, input_path, original_filename, state, "
+                    "error_reason, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                    (user_id, chat_id, input_path, original_filename, JobState.QUEUED.value, None, now, now),
+                )
+                job_id = cur.lastrowid
+                self._conn.execute("COMMIT")
+            except Exception:
+                self._conn.execute("ROLLBACK")
+                raise
         return self.get(job_id)  # type: ignore[return-value]
 
     def queue_position(self, job_id: int) -> int:
@@ -143,6 +198,25 @@ class JobStore:
                 (state.value, error_reason, _now(), job_id),
             )
 
+    def set_delivery_flag(
+        self, job_id: int, *, archive: bool | None = None, user: bool | None = None
+    ) -> None:
+        """Record that a delivery copy has been sent, so deliver() is idempotent across restarts (D8)."""
+        sets, params = [], []
+        if archive is not None:
+            sets.append("archive_sent=?")
+            params.append(1 if archive else 0)
+        if user is not None:
+            sets.append("user_sent=?")
+            params.append(1 if user else 0)
+        if not sets:
+            return
+        params.extend([_now(), job_id])
+        with self._lock:
+            self._conn.execute(
+                f"UPDATE jobs SET {', '.join(sets)}, updated_at=? WHERE id=?", tuple(params)
+            )
+
     def get(self, job_id: int) -> Job | None:
         row = self._conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
         return _row_to_job(row) if row else None
@@ -170,11 +244,34 @@ class JobStore:
         return [_row_to_job(r) for r in rows]
 
     def requeue_in_progress(self) -> int:
-        """Reset rebuildable in-progress jobs to QUEUED so a restart resumes them. Returns count."""
-        placeholders = ",".join("?" for _ in _REBUILDABLE)
+        """Reset rebuildable in-progress jobs to QUEUED so a restart resumes them. Returns count.
+
+        Rebuildable = {SYNTHESIZING, UPLOADING} plus any legacy 'packaging' rows from a pre-002 DB.
+        The per-copy delivery flags are deliberately NOT reset, so a requeued UPLOADING job re-sends
+        only the copy that had not yet gone out (exactly-once on resume; research D8).
+        """
+        values = [s.value for s in _REBUILDABLE] + list(_LEGACY_REBUILDABLE)
+        placeholders = ",".join("?" for _ in values)
         with self._lock:
             cur = self._conn.execute(
                 f"UPDATE jobs SET state=?, updated_at=? WHERE state IN ({placeholders})",
-                (JobState.QUEUED.value, _now(), *[s.value for s in _REBUILDABLE]),
+                (JobState.QUEUED.value, _now(), *values),
+            )
+            return cur.rowcount
+
+    def prune_terminal_jobs(self, *, keep: int) -> int:
+        """Delete all but the `keep` most-recent terminal (cleaned/failed) rows. Returns #deleted.
+
+        Bounds datastore growth while retaining recent observability; active jobs are never pruned
+        (research D10). `keep` is clamped to >= 0.
+        """
+        keep = max(0, keep)
+        term_values = [s.value for s in _TERMINAL]
+        placeholders = ",".join("?" for _ in term_values)
+        with self._lock:
+            cur = self._conn.execute(
+                f"DELETE FROM jobs WHERE state IN ({placeholders}) AND id NOT IN "
+                f"(SELECT id FROM jobs WHERE state IN ({placeholders}) ORDER BY id DESC LIMIT ?)",
+                (*term_values, *term_values, keep),
             )
             return cur.rowcount

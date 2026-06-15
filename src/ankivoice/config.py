@@ -34,6 +34,12 @@ class Config:
     model_dir: Path | None
     sample_rate: int
     mp3_quality: str
+    # Cycle 002: bounded operational limits (safe defaults; operator-overridable).
+    # Defaults here are a convenience for direct construction (e.g. tests); load_config always sets
+    # them explicitly from the environment, so production configuration stays fully explicit.
+    job_history: int = 500        # max retained terminal job rows (datastore bound)
+    ffmpeg_timeout: int = 120     # seconds before an MP3 encode is aborted
+    delivery_retries: int = 3     # bounded in-process delivery attempts before deferring to restart
 
 
 def _as_int(key: str, value: str) -> int:
@@ -74,4 +80,9 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         model_dir=Path(model_dir_val) if model_dir_val else None,
         sample_rate=_SAMPLE_RATE,
         mp3_quality=env.get("ANKIVOICE_MP3_QUALITY", "4"),
+        job_history=_as_int("ANKIVOICE_JOB_HISTORY", env.get("ANKIVOICE_JOB_HISTORY", "500")),
+        ffmpeg_timeout=_as_int("ANKIVOICE_FFMPEG_TIMEOUT", env.get("ANKIVOICE_FFMPEG_TIMEOUT", "120")),
+        delivery_retries=_as_int(
+            "ANKIVOICE_DELIVERY_RETRIES", env.get("ANKIVOICE_DELIVERY_RETRIES", "3")
+        ),
     )

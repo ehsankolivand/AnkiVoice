@@ -110,7 +110,11 @@ class Worker:
             await self._fail(job, _GENERIC_FAILURE, reason=f"error: {exc}")
             return
 
-        self.store.set_state(job.id, JobState.PACKAGING)
+        # Move OUT of SYNTHESIZING synchronously the instant the build returns, so the worker can claim
+        # the next job without ever having two jobs in SYNTHESIZING (the invariant PACKAGING used to
+        # serve). deliver() also sets UPLOADING; this synchronous set closes the window before the
+        # delivery task is scheduled. (Cycle 002: PACKAGING removed.)
+        self.store.set_state(job.id, JobState.UPLOADING)
         # dispatch delivery separately so it overlaps the NEXT job's synthesis (FR-019)
         task = asyncio.create_task(self._deliver(job, apkg_path))
         self._delivery_tasks.add(task)

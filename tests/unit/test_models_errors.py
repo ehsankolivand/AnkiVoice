@@ -23,22 +23,24 @@ def test_parsed_deck_counts():
 
 
 def test_jobstate_values_complete():
+    # PACKAGING removed in cycle 002 (was set only AFTER packaging finished; never observable as a
+    # distinct step). Synthesis+packaging are one CPU step (SYNTHESIZING); delivery is UPLOADING.
     expected = {
         "queued",
         "synthesizing",
-        "packaging",
         "uploading",
         "delivered",
         "cleaned",
         "failed",
     }
     assert {s.value for s in JobState} == expected
+    assert not hasattr(JobState, "PACKAGING")
     assert JobState.QUEUED.value == "queued"
     # str-enum: comparing to the raw string works
     assert JobState.FAILED == "failed"
 
 
-def test_job_dataclass():
+def test_job_dataclass_has_delivery_flags():
     j = Job(
         id=1,
         user_id=2,
@@ -52,6 +54,9 @@ def test_job_dataclass():
     )
     assert j.state is JobState.QUEUED
     assert j.original_filename == "vocab.txt"
+    # cycle 002: per-copy delivery idempotency flags default False
+    assert j.archive_sent is False
+    assert j.user_sent is False
 
 
 def test_validation_error_carries_code_and_user_message():

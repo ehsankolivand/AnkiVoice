@@ -30,6 +30,10 @@ def test_loads_required_and_defaults():
     assert isinstance(cfg.work_dir, Path)
     assert isinstance(cfg.db_path, Path)
     assert cfg.model_dir is None
+    # cycle 002 defaults
+    assert cfg.job_history == 500
+    assert cfg.ffmpeg_timeout == 120
+    assert cfg.delivery_retries == 3
 
 
 def test_overrides_from_env():
@@ -42,6 +46,9 @@ def test_overrides_from_env():
             ANKIVOICE_WORK_DIR="/tmp/w",
             ANKIVOICE_DB_PATH="/tmp/db.sqlite",
             ANKIVOICE_MODEL_DIR="/tmp/models",
+            ANKIVOICE_JOB_HISTORY="50",
+            ANKIVOICE_FFMPEG_TIMEOUT="30",
+            ANKIVOICE_DELIVERY_RETRIES="5",
         )
     )
     assert cfg.default_voice == "am_michael"
@@ -51,6 +58,9 @@ def test_overrides_from_env():
     assert cfg.work_dir == Path("/tmp/w")
     assert cfg.db_path == Path("/tmp/db.sqlite")
     assert cfg.model_dir == Path("/tmp/models")
+    assert cfg.job_history == 50
+    assert cfg.ffmpeg_timeout == 30
+    assert cfg.delivery_retries == 5
 
 
 def test_missing_required_lists_every_missing_key():
