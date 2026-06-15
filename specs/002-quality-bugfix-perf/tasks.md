@@ -24,29 +24,29 @@ Every fix traces to a finding ID in [audit-notes.md](./audit-notes.md) and a dec
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirm baseline: `uv run pytest` green (82 passed, 1 deselected) and record the
+- [x] T001 Confirm baseline: `uv run pytest` green (82 passed, 1 deselected) and record the
   representative-deck baseline timing (already in `specs/002-quality-bugfix-perf/perf-notes.md`).
-- [ ] T002 [P] Add committed representative fixture `tests/fixtures/representative_deck.txt` (≥50 full
+- [x] T002 [P] Add committed representative fixture `tests/fixtures/representative_deck.txt` (≥50 full
   English-sentence cards incl. ~10 duplicate rows) for the perf/dedupe assertions.
 
 ## Phase 2: Foundational (shared types + store; blocks US1/US3/US4/US6) ⚠️
 
-- [ ] T003 Write FAILING `tests/unit/test_models_errors.py` updates: `JobState` has exactly
+- [x] T003 Write FAILING `tests/unit/test_models_errors.py` updates: `JobState` has exactly
   {queued,synthesizing,uploading,delivered,cleaned,failed} (NO `packaging`); `Job` carries
   `archive_sent`/`user_sent` booleans. (research D7/D8)
-- [ ] T004 Implement `src/ankivoice/models.py`: remove `JobState.PACKAGING`; add `Job.archive_sent`,
+- [x] T004 Implement `src/ankivoice/models.py`: remove `JobState.PACKAGING`; add `Job.archive_sent`,
   `Job.user_sent` (default False). Make T003 green.
-- [ ] T005 Write FAILING `tests/unit/test_store.py` + `tests/integration/test_store_resume.py` updates:
+- [x] T005 Write FAILING `tests/unit/test_store.py` + `tests/integration/test_store_resume.py` updates:
   additive schema migration adds `archive_sent`/`user_sent` (reopen old DB safe); `_ACTIVE`/`_AHEAD`/
   `_REBUILDABLE` contain no PACKAGING (`_AHEAD={queued,synthesizing}`); `enqueue_if_no_active` returns a
   Job when free and `None` when the user already has an active job (atomic); `set_delivery_flag`;
   `prune_terminal_jobs(keep=N)` keeps the N most-recent terminal rows and never prunes active jobs;
   `requeue_in_progress` resets {synthesizing,uploading}+legacy `'packaging'`→queued WITHOUT resetting the
   delivery flags and does NOT touch DELIVERED. (research D7/D8/D9/D10)
-- [ ] T006 Implement `src/ankivoice/store.py`: schema + migration; updated state sets;
+- [x] T006 Implement `src/ankivoice/store.py`: schema + migration; updated state sets;
   `enqueue_if_no_active`; `set_delivery_flag`; `prune_terminal_jobs`; legacy-`packaging`-aware
   `requeue_in_progress`; `_row_to_job` reads the new columns. Make T005 green.
-- [ ] T006b Write FAILING `tests/unit/test_config.py` cases then implement `src/ankivoice/config.py`:
+- [x] T006b Write FAILING `tests/unit/test_config.py` cases then implement `src/ankivoice/config.py`:
   add `job_history` (default 500), `ffmpeg_timeout` (default 120), `delivery_retries` (default 3) read
   from `ANKIVOICE_*` env. (Foundational because US3/US4/US5 all consume these; resolves analyze C1.)
 
@@ -60,26 +60,26 @@ Every fix traces to a finding ID in [audit-notes.md](./audit-notes.md) and a dec
 **Independent test**: `tests/unit/test_parser.py`, `test_pipeline.py`, `test_packaging.py`,
 `test_pipeline_e2e.py` green with the new edge cases.
 
-- [ ] T007 [P] [US1] Write FAILING `tests/unit/test_parser.py` cases (audit A1/A2/A4, research D1/D2/D3):
+- [x] T007 [P] [US1] Write FAILING `tests/unit/test_parser.py` cases (audit A1/A2/A4, research D1/D2/D3):
   (a) a Back beginning with an unbalanced quote does NOT swallow following rows (3 rows → 3 cards);
   (b) a Back beginning with a literal quote keeps its quotes in `back` (display) byte-for-byte;
   (c) a genuine balanced transport-quoted field is unwrapped + inner `""`→`"` for both display & spoken
   (keep existing `test_csv_quote_wrapping_unwrapped_for_both`); (d) a BOM-prefixed file with `#` headers
   skips the headers and yields no junk card; (e) a Back that cleans to whitespace (`&#32;`/`&nbsp;`) is
   skipped+counted; (f) `clean_for_speech` does balanced-unwrap + html.unescape.
-- [ ] T008 [US1] Implement `src/ankivoice/parser.py`: `utf-8-sig` decode; line-by-line first-TAB split
+- [x] T008 [US1] Implement `src/ankivoice/parser.py`: `utf-8-sig` decode; line-by-line first-TAB split
   (no row merging); `_unwrap_balanced` helper (balanced-only); `back`/`front` display = unwrap-if-balanced;
   `spoken = html.unescape(_unwrap_balanced(back))`; skip+count rows whose `spoken.strip()==""`;
   `clean_for_speech = html.unescape(_unwrap_balanced(field))`. Make T007 green.
-- [ ] T009 [P] [US1] Write FAILING `tests/unit/test_pipeline.py` case (audit A3/D4): per-card MP3
+- [x] T009 [P] [US1] Write FAILING `tests/unit/test_pipeline.py` case (audit A3/D4): per-card MP3
   filename equals `sha256(spoken).hexdigest()+".mp3"` (FULL digest); dedupe still keys on full spoken
   (identical sentences → one MP3). Keep existing dedupe/fidelity tests.
-- [ ] T010 [US1] Implement `src/ankivoice/pipeline.py`: full-digest filename. Make T009 green.
-- [ ] T011 [P] [US1] Write FAILING `tests/unit/test_packaging.py` case (audit E1): `build_apkg` raises a
+- [x] T010 [US1] Implement `src/ankivoice/pipeline.py`: full-digest filename. Make T009 green.
+- [x] T011 [P] [US1] Write FAILING `tests/unit/test_packaging.py` case (audit E1): `build_apkg` raises a
   clear error if a card's `audio_filename` basename has no matching media path (keep empty-front and
   identical-rows tests).
-- [ ] T012 [US1] Implement `src/ankivoice/packaging.py` basename↔media assertion. Make T011 green.
-- [ ] T013 [US1] Update `tests/integration/test_pipeline_e2e.py` to assert the reconciled fidelity
+- [x] T012 [US1] Implement `src/ankivoice/packaging.py` basename↔media assertion. Make T011 green.
+- [x] T013 [US1] Update `tests/integration/test_pipeline_e2e.py` to assert the reconciled fidelity
   (6 usable cards; entities kept; balanced transport quotes unwrapped; line endings normalized) and keep
   it green.
 
@@ -92,14 +92,14 @@ Every fix traces to a finding ID in [audit-notes.md](./audit-notes.md) and a dec
 **Goal**: refuse to start when it cannot produce correct audio. **Independent test**:
 `tests/unit/test_preflight.py` + `tests/integration/test_main.py`.
 
-- [ ] T014 [US2] Write FAILING `tests/unit/test_preflight.py` (audit C1, research D11): with `which`
+- [x] T014 [US2] Write FAILING `tests/unit/test_preflight.py` (audit C1, research D11): with `which`
   patched to miss espeak-ng → `PreflightError` naming espeak-ng; miss ffmpeg → names ffmpeg; voice probe
   raising → `PreflightError` naming the voice + warm-up; all present → returns None and the probe synth
   ran once (prewarm); `ANKIVOICE_SKIP_PREFLIGHT` set → no checks run.
-- [ ] T015 [US2] Implement `src/ankivoice/preflight.py` (`PreflightError`, `check_runtime(config)`:
+- [x] T015 [US2] Implement `src/ankivoice/preflight.py` (`PreflightError`, `check_runtime(config)`:
   espeak-ng + ffmpeg on PATH; one-word real synth with the configured voice to verify+prewarm; honor
   `ANKIVOICE_SKIP_PREFLIGHT`). Make T014 green.
-- [ ] T016 [US2] Update FAILING `tests/integration/test_main.py`: `main()` calls
+- [x] T016 [US2] Update FAILING `tests/integration/test_main.py`: `main()` calls
   `preflight.check_runtime` before `run_polling` (assert order via patches) and reuses the prewarmed
   synthesizer. Then implement the wiring in `src/ankivoice/__main__.py`. Green.
 
@@ -112,14 +112,14 @@ Every fix traces to a finding ID in [audit-notes.md](./audit-notes.md) and a dec
 **Goal**: no engine temp leak; bounded job table. **Independent test**: `test_packaging.py` leak test +
 `test_store.py`/`test_worker.py` prune.
 
-- [ ] T017 [P] [US3] Write FAILING `tests/unit/test_packaging.py` leak test (audit B1, research D6): with
+- [x] T017 [P] [US3] Write FAILING `tests/unit/test_packaging.py` leak test (audit B1, research D6): with
   `TMPDIR` isolated, build a package into a job dir, remove the job dir, assert ZERO leftover temp files
   remain in the isolated system temp dir.
-- [ ] T018 [US3] Implement `src/ankivoice/packaging.py`: scope `tempfile.tempdir` to `out_path.parent`
+- [x] T018 [US3] Implement `src/ankivoice/packaging.py`: scope `tempfile.tempdir` to `out_path.parent`
   around `write_to_file` (save/restore in `finally`). Make T017 green.
-- [ ] T019 [US3] Write FAILING `tests/unit/test_worker.py` resume-prune test: `resume()` calls
+- [x] T019 [US3] Write FAILING `tests/unit/test_worker.py` resume-prune test: `resume()` calls
   `prune_terminal_jobs(keep=config.job_history)` so terminal rows are bounded; active jobs untouched.
-- [ ] T020 [US3] Implement the prune call in `src/ankivoice/worker.py` `resume()` using
+- [x] T020 [US3] Implement the prune call in `src/ankivoice/worker.py` `resume()` using
   `config.job_history` (added in T006b). Make T019 green.
 
 **Checkpoint**: disk strictly flat (incl. engine temp); datastore bounded.
@@ -131,23 +131,23 @@ Every fix traces to a finding ID in [audit-notes.md](./audit-notes.md) and a dec
 **Goal**: no duplicate delivery across restart; bounded retry. **Independent test**: `test_delivery.py`,
 `test_worker.py`, `test_bot_handlers.py`.
 
-- [ ] T021 [P] [US4] Write FAILING `tests/unit/test_delivery.py` (audit D1, research D8): `deliver`
+- [x] T021 [P] [US4] Write FAILING `tests/unit/test_delivery.py` (audit D1, research D8): `deliver`
   sets `archive_sent` after the archive send and `user_sent` after the user send; a re-run when
   `archive_sent` is already true sends ONLY the user copy (archive not re-sent); a re-run when both flags
   set sends NOTHING and just cleans; archive-first order + privacy (only archive+user) preserved.
-- [ ] T022 [US4] Implement `src/ankivoice/delivery.py`: per-copy idempotent send + flag setting; mark
+- [x] T022 [US4] Implement `src/ankivoice/delivery.py`: per-copy idempotent send + flag setting; mark
   DELIVERED once both set; ready message (best-effort) after DELIVERED, then scoped cleanup. Make T021
   green.
-- [ ] T023 [P] [US4] Write FAILING `tests/unit/test_worker.py` cases: a transient delivery failure is
+- [x] T023 [P] [US4] Write FAILING `tests/unit/test_worker.py` cases: a transient delivery failure is
   retried up to `config.delivery_retries` with backoff then retained (not deleted) for resume; on resume,
   an `uploading` job with `archive_sent=True` re-delivers ONLY the user copy (exactly-once).
-- [ ] T024 [US4] Implement `src/ankivoice/worker.py`: set `UPLOADING` (not PACKAGING) synchronously after
+- [x] T024 [US4] Implement `src/ankivoice/worker.py`: set `UPLOADING` (not PACKAGING) synchronously after
   build; bounded delivery retry with backoff in `_deliver`; resume rebuilds uploading jobs (flags
   intact). Make T023 green.
-- [ ] T025 [P] [US4] Write FAILING `tests/integration/test_bot_handlers.py` case (audit D2, research D9):
+- [x] T025 [P] [US4] Write FAILING `tests/integration/test_bot_handlers.py` case (audit D2, research D9):
   `on_document` uses `enqueue_if_no_active`; when refused after a save, the orphan job dir is removed and
   the user is told a deck is already processing.
-- [ ] T026 [US4] Implement `src/ankivoice/bot.py`: `enqueue_if_no_active` + orphan cleanup on refusal.
+- [x] T026 [US4] Implement `src/ankivoice/bot.py`: `enqueue_if_no_active` + orphan cleanup on refusal.
   Make T025 green.
 
 **Checkpoint**: delivery is exactly-once across restarts; transient failures retried, then deferred.
@@ -159,14 +159,14 @@ Every fix traces to a finding ID in [audit-notes.md](./audit-notes.md) and a dec
 **Goal**: same-or-faster, byte-identical audio, invariants intact. **Independent test**: `test_audio.py`,
 `test_pipeline.py`, perf re-measure.
 
-- [ ] T027 [P] [US5] Write FAILING `tests/unit/test_audio.py` cases (audit A5/#15, research D5): `encode_mp3`
+- [x] T027 [P] [US5] Write FAILING `tests/unit/test_audio.py` cases (audit A5/#15, research D5): `encode_mp3`
   accepts/uses a `timeout` and raises a clear error on `TimeoutExpired` (patched); the ffmpeg path is
   resolved at most once across multiple encodes (memoized).
-- [ ] T028 [US5] Implement `src/ankivoice/audio.py`: memoized ffmpeg path + `subprocess.run(timeout=...)`
+- [x] T028 [US5] Implement `src/ankivoice/audio.py`: memoized ffmpeg path + `subprocess.run(timeout=...)`
   with a clear `RuntimeError` on timeout. Make T027 green.
-- [ ] T029 [US5] Implement `torch.inference_mode()` wrap in `src/ankivoice/speech.py.synthesize`
+- [x] T029 [US5] Implement `torch.inference_mode()` wrap in `src/ankivoice/speech.py.synthesize`
   (byte-identical output; `tests/unit/test_speech_wrapper.py` stays green — extend if needed).
-- [ ] T030 [US5] Re-measure the representative deck (real Kokoro, single core, offline) and record the
+- [x] T030 [US5] Re-measure the representative deck (real Kokoro, single core, offline) and record the
   AFTER numbers + confirm byte-identical audio in `specs/002-quality-bugfix-perf/perf-notes.md`.
 
 **Checkpoint**: safe speedups applied; numbers recorded; no invariant weakened.
@@ -177,30 +177,30 @@ Every fix traces to a finding ID in [audit-notes.md](./audit-notes.md) and a dec
 
 **Goal**: every 001 artifact + CLAUDE.md matches the corrected code (audit §G map). [P] = different file.
 
-- [ ] T031 [P] [US6] Reconcile `specs/001-ankivoice-audio-decks/spec.md`: FR-003 (first-TAB), FR-011
+- [x] T031 [P] [US6] Reconcile `specs/001-ankivoice-audio-decks/spec.md`: FR-003 (first-TAB), FR-011
   (clean_for_speech = balanced-unwrap + entity-decode), FR-012/SC-003 (fidelity = decoded field;
   transport quotes unwrapped for balanced fields, line endings→LF, BOM stripped); add edge cases (BOM,
   leading/unbalanced quote, blank-after-clean skip, empty-Front placeholder, line endings). Add a brief
   reference to the 002 increment + the startup guard.
-- [ ] T032 [P] [US6] Reconcile `specs/001-ankivoice-audio-decks/data-model.md`: `skipped_empty_back`
+- [x] T032 [P] [US6] Reconcile `specs/001-ankivoice-audio-decks/data-model.md`: `skipped_empty_back`
   meaning (counts no-TAB + blank-after-clean); JobState without PACKAGING; resume (DELIVERED cleaned not
   requeued; per-copy flags; rebuildable set); queue position (`_AHEAD`); Job gains delivery flags; new
   config keys.
-- [ ] T033 [P] [US6] Reconcile `specs/001-ankivoice-audio-decks/research.md`: guid scheme (deck stem +
+- [x] T033 [P] [US6] Reconcile `specs/001-ankivoice-audio-decks/research.md`: guid scheme (deck stem +
   index + content); line-ending normalization; BOM strip; HF offline env + `ANKIVOICE_ALLOW_DOWNLOADS`;
   espeak/ffmpeg startup guard; inference_mode; ffmpeg timeout; cross-job cache rejected (constitution);
   PACKAGING removed.
-- [ ] T034 [P] [US6] Reconcile `specs/001-ankivoice-audio-decks/contracts/module-interfaces.md`:
+- [x] T034 [P] [US6] Reconcile `specs/001-ankivoice-audio-decks/contracts/module-interfaces.md`:
   clean_for_speech + parse_deck wording; `build_application(config, store, synthesizer)`; `__main__.main`;
   delivery ready-message ordering; JobState; new store methods (enqueue_if_no_active, set_delivery_flag,
   prune_terminal_jobs); packaging basename assertion + temp scoping; add `preflight` interface.
-- [ ] T035 [P] [US6] Reconcile `specs/001-ankivoice-audio-decks/contracts/bot-interface.md` (orphan
+- [x] T035 [P] [US6] Reconcile `specs/001-ankivoice-audio-decks/contracts/bot-interface.md` (orphan
   cleanup on refused second active job) and `specs/001-ankivoice-audio-decks/tasks.md` (T022/T023 DELIVERED
   not requeued; T009 clean_for_speech; T015 field-count guard + media-count = distinct spoken).
-- [ ] T036 [P] [US6] Reconcile `specs/001-ankivoice-audio-decks/plan.md` (module count 12→14; add
+- [x] T036 [P] [US6] Reconcile `specs/001-ankivoice-audio-decks/plan.md` (module count 12→14; add
   pipeline + preflight; note guard/inference_mode/temp-scoping) and
   `specs/001-ankivoice-audio-decks/checklists/requirements.md` (FR count 30→31).
-- [ ] T037 [P] [US6] Update `.env.example` (new keys: `ANKIVOICE_JOB_HISTORY`, `ANKIVOICE_FFMPEG_TIMEOUT`,
+- [x] T037 [P] [US6] Update `.env.example` (new keys: `ANKIVOICE_JOB_HISTORY`, `ANKIVOICE_FFMPEG_TIMEOUT`,
   `ANKIVOICE_DELIVERY_RETRIES`, `ANKIVOICE_SKIP_PREFLIGHT`; document `HF_HUB_OFFLINE`/`TRANSFORMERS_OFFLINE`/
   `ANKIVOICE_ALLOW_DOWNLOADS`/`ANKIVOICE_MODEL_DIR`) and `README.md` (module map +preflight; startup guard;
   new keys). CLAUDE.md managed block already refreshed.
@@ -211,11 +211,11 @@ Every fix traces to a finding ID in [audit-notes.md](./audit-notes.md) and a dec
 
 ## Phase 9: Polish & Verification
 
-- [ ] T038 [P] Add `tests/unit/test_packaging.py` field-count guard test (genanki raises on a note whose
+- [x] T038 [P] Add `tests/unit/test_packaging.py` field-count guard test (genanki raises on a note whose
   field count ≠ model field count) to make 001 tasks.md T015 accurate.
-- [ ] T039 Run the full default suite `uv run pytest` → GREEN; confirm fast + offline.
-- [ ] T040 Run `uv run pytest -m live` → the real Kokoro + real `.apkg` test passes (model is cached).
-- [ ] T041 Final adversarial self-review (subagents) over: parser fidelity/no-loss, BOM, startup guard,
+- [x] T039 Run the full default suite `uv run pytest` → GREEN; confirm fast + offline.
+- [x] T040 Run `uv run pytest -m live` → the real Kokoro + real `.apkg` test passes (model is cached).
+- [x] T041 Final adversarial self-review (subagents) over: parser fidelity/no-loss, BOM, startup guard,
   exactly-once delivery + resume, genanki temp leak, prune, perf (byte-identical + numbers), .apkg
   correctness; fix anything confirmed; re-run the suite.
 

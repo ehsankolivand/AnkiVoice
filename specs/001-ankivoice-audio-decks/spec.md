@@ -18,10 +18,12 @@
   A data row with no TAB has no Back and is skipped and counted (like an empty-Back row). WRONG_FORMAT
   applies only when no data row contains a TAB at all (the file is not tab-separated) or the bytes are
   not decodable; EMPTY applies when TABs exist but zero usable cards remain after skipping.
-- Q: What happens when a delivery upload (archive or user) fails? → A: The job is retained (the
-  package is never auto-deleted) and retried when the service next restarts (resume). There is no
-  in-process delivery-retry loop in v1. By contrast, a processing failure (parse/synthesis/packaging)
-  terminates the job as failed and its own scoped files are cleaned up.
+- Q: What happens when a delivery upload (archive or user) fails? → A: A transient failure is retried a
+  small **bounded** number of times in-process (with backoff; cycle 002); if it still fails the job is
+  retained (the package is never auto-deleted) and re-delivered when the service next restarts (resume) —
+  sending only the copy not yet sent (exactly-once). There is no *unbounded* retry loop. By contrast, a
+  processing failure (parse/synthesis/packaging) terminates the job as failed and its own scoped files
+  are cleaned up.
 - Q: What text encoding is assumed for the uploaded file? → A: UTF-8 (Anki text exports are UTF-8);
   bytes that cannot be decoded as UTF-8 are rejected as WRONG_FORMAT with a friendly message.
 - Q: How are the output deck name and delivered file named? → A: From the user's original filename
@@ -285,9 +287,11 @@ service continues running, and no residual files remain.
   a terminal failure; see FR-026.)
 - **FR-025**: File removal MUST be scoped strictly to the job's own working area and outputs, and
   MUST NEVER remove anything outside that area.
-- **FR-026**: If either delivery copy fails, the system MUST retain the package (not delete it) and
-  retry the job when the service next restarts (resume); it MUST NOT auto-delete an undelivered
-  package. v1 has no in-process delivery-retry loop.
+- **FR-026**: If either delivery copy fails, the system MUST retry a small **bounded** number of times
+  in-process (with backoff), and if it still fails MUST retain the package (not delete it) and
+  re-deliver the job when the service next restarts (resume), sending only the copy not yet sent; it MUST
+  NOT auto-delete an undelivered package and MUST NOT run an unbounded retry loop. (Cycle 002 added the
+  bounded in-process retry; the restart-resume remains the durable backstop.)
 - **FR-027**: On successful delivery the system MUST send the user a clear, friendly "your deck is
   ready" message.
 

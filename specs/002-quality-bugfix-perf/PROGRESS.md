@@ -26,7 +26,9 @@ Deployment/easy-install is OUT OF SCOPE this cycle.
   (temp-leak/prune) DONE; US4 (delivery idempotency/retry/atomic enqueue) DONE; US5 (audio timeout/
   memoize/inference_mode; perf reconciled — Kokoro non-deterministic, "byte-identical" dropped) DONE.
   Suite 110 green. NEXT: US6 reconcile 001 artifacts; Polish (field-count test, full suite, live test, self-review).
-- [ ] Self-review (parallel)
+- [x] /speckit-implement DONE: US1–US6 + polish; all 42 tasks [x]; default suite 111 passed +1 live green;
+  all 001 artifacts + CLAUDE.md reconciled; FR-026/clarification updated for bounded retry.
+- [~] Self-review (parallel workflow wf_9acc0bf3-be6 running)
 - [ ] Commit + handoff
 
 ## Findings model (from manual audit; confirm via parallel audit)
