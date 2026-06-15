@@ -28,8 +28,11 @@ Deployment/easy-install is OUT OF SCOPE this cycle.
   Suite 110 green. NEXT: US6 reconcile 001 artifacts; Polish (field-count test, full suite, live test, self-review).
 - [x] /speckit-implement DONE: US1–US6 + polish; all 42 tasks [x]; default suite 111 passed +1 live green;
   all 001 artifacts + CLAUDE.md reconciled; FR-026/clarification updated for bounded retry.
-- [~] Self-review (parallel workflow wf_9acc0bf3-be6 running)
-- [ ] Commit + handoff
+- [x] Self-review DONE (7 reviewers + verify; 16 confirmed, 0 rejected). Fixed: startup guard
+  (espeak bundled — dropped false-positive PATH gate, probe-based), idempotent ready-message, and a
+  full byte-identical/check_runtime/espeak-PATH/packaging doc-reconcile sweep. Final consistency scan CLEAN.
+  Default suite 112 passed + live 1 passed.
+- [x] Commit + handoff DONE.
 
 ## Findings model (from manual audit; confirm via parallel audit)
 - A. Resume re-delivers DELIVERED: CODE already correct (store requeues only rebuildable; worker.resume cleans DELIVERED). tasks.md T022/T023 WORDING is stale (claims DELIVERED→QUEUED). Robust fix NOT done: add per-copy delivery flags (archive_sent/user_sent) so a mid-delivery crash re-sends only the missing copy (idempotent deliver()).

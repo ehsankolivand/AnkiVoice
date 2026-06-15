@@ -48,7 +48,8 @@ one audio-enhanced package back.
 
 **Independent Test**: Send one small valid export; receive a package; import it into Anki; reveal
 each answer and confirm the correct audio auto-plays and the replay button works; confirm the
-displayed answer text is byte-for-byte identical to the original.
+displayed answer text matches the value a normal Anki import shows — byte-for-byte after transport
+decoding (balanced transport quotes unwrapped, line endings normalized, BOM stripped; FR-012).
 
 **Acceptance Scenarios**:
 
