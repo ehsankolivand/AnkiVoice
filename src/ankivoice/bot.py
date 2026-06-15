@@ -60,19 +60,21 @@ async def on_document(update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    # 2) one active job per user (FR-020)
-    if store.has_active_job(user_id):
+    # 2) accept iff the user has no active job — ATOMIC check-and-reserve in one transaction (FR-020).
+    #    The slot is reserved (input_path PENDING so the worker can't claim it mid-download) BEFORE the
+    #    download, so a refusal never leaves an orphaned file and two near-simultaneous uploads from the
+    #    same user can't both create an active job (cycle 002, audit D2).
+    job = store.enqueue_if_no_active(
+        user_id=user_id, chat_id=chat_id, input_path=PENDING_INPUT, original_filename=doc.file_name
+    )
+    if job is None:
         await update.message.reply_text(
             "You already have a deck being processed — I work on one at a time. "
             "Please wait for it to finish before sending another."
         )
         return
 
-    # 3) accept: enqueue (input_path PENDING so the worker can't claim it mid-download), save the
-    #    upload inside the job dir, then mark it claimable and reply the queue position (FR-018).
-    job = store.enqueue(
-        user_id=user_id, chat_id=chat_id, input_path=PENDING_INPUT, original_filename=doc.file_name
-    )
+    # 3) save the upload inside the job dir, then mark it claimable and reply the queue position (FR-018).
     job_dir = Path(config.work_dir) / f"job_{job.id}"
     job_dir.mkdir(parents=True, exist_ok=True)
     input_path = job_dir / "input.txt"

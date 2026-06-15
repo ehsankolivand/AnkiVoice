@@ -193,6 +193,66 @@ async def test_one_synthesis_at_a_time_and_fcfs_under_burst(tmp_path):
     assert list(work.glob("job_*")) == []  # disk back to baseline (SC-006, SC-007)
 
 
+async def test_delivery_is_retried_a_bounded_number_then_retained(tmp_path):
+    # cycle 002 (audit D5/IR-015): a transient delivery failure is retried delivery_retries times with
+    # backoff, then the job is RETAINED (not deleted) for restart-resume. No unbounded loop.
+    work = tmp_path / "work"
+    work.mkdir()
+    store = JobStore(tmp_path / "jobs.sqlite")
+    cfg = dataclasses.replace(make_config(tmp_path, work), delivery_retries=3)
+
+    class CountingFailSender(FakeSender):
+        def __init__(self):
+            super().__init__()
+            self.archive_attempts = 0
+
+        async def send_document(self, chat_id, path, *, filename, caption=None):
+            if chat_id == 999:  # archive always fails (transient)
+                self.archive_attempts += 1
+                raise RuntimeError("transient archive failure")
+            await super().send_document(chat_id, path, filename=filename, caption=caption)
+
+    sender = CountingFailSender()
+    worker = Worker(store=store, synthesizer=FakeSynthesizer(), sender=sender, config=cfg,
+                    delivery_backoff_base=0.0)
+    job = enqueue_job(store, work, user_id=1, chat_id=100, content=b"q\tHello there.\n")
+    store.set_state(job.id, JobState.UPLOADING)
+    apkg = work / f"job_{job.id}" / "vocab.apkg"
+    apkg.write_bytes(b"PK\x03\x04")
+
+    await worker._deliver(job, apkg)
+
+    assert sender.archive_attempts == 3  # bounded retries, no unbounded loop
+    assert store.get(job.id).state != JobState.CLEANED  # retained for resume
+    assert (work / f"job_{job.id}").exists()
+
+
+async def test_resume_redelivers_only_the_missing_copy(tmp_path):
+    # cycle 002 (IR-014): an UPLOADING job that already sent the archive copy re-sends ONLY the user
+    # copy on resume — exactly-once across a mid-delivery restart.
+    work = tmp_path / "work"
+    work.mkdir()
+    store = JobStore(tmp_path / "jobs.sqlite")
+    cfg = make_config(tmp_path, work)
+    sender = FakeSender()
+    job = enqueue_job(store, work, user_id=1, chat_id=100, content=b"q\tHello there.\n")
+    store.set_state(job.id, JobState.UPLOADING)
+    store.set_delivery_flag(job.id, archive=True)  # archive went out before the "crash"
+    worker = Worker(store=store, synthesizer=FakeSynthesizer(), sender=sender, config=cfg)
+
+    stop = asyncio.Event()
+    run_task = asyncio.create_task(worker.run(stop))
+    for _ in range(200):
+        if store.get(job.id).state == JobState.CLEANED:
+            break
+        await asyncio.sleep(0.02)
+    stop.set()
+    await run_task
+
+    assert store.get(job.id).state == JobState.CLEANED
+    assert {d[1] for d in sender.documents} == {100}  # ONLY the user copy; archive (999) not re-sent
+
+
 async def test_delivery_overlaps_next_synthesis(tmp_path):
     # FR-019: while job A is being delivered (gated), the worker can synthesize job B.
     work = tmp_path / "work"

@@ -94,6 +94,8 @@ async def test_rejects_too_large_without_creating_job(tmp_path):
 
 
 async def test_declines_second_active_job_for_same_user(tmp_path):
+    # cycle 002: the decline now goes through the ATOMIC store.enqueue_if_no_active (audit D2). It must
+    # create neither a second job nor an orphan job dir.
     work = tmp_path / "work"
     work.mkdir()
     store = JobStore(tmp_path / "jobs.sqlite")
@@ -105,6 +107,26 @@ async def test_declines_second_active_job_for_same_user(tmp_path):
 
     assert len(store.list_active()) == 1  # still just the one (FR-020)
     assert any("already" in r.lower() for r in upd.message.replies)
+    assert list(work.glob("job_*")) == []  # no orphan dir created on decline
+
+
+async def test_download_failure_cleans_orphan_and_notifies(tmp_path):
+    # A failed download after the slot is reserved must leave NO residual files and unblock the user.
+    work = tmp_path / "work"
+    work.mkdir()
+    store = JobStore(tmp_path / "jobs.sqlite")
+    cfg = make_config(tmp_path, work)
+
+    class BoomDoc(FakeDoc):
+        async def get_file(self):
+            raise RuntimeError("network blip")
+
+    upd = FakeUpdate(BoomDoc(b"q\tHi.\n"), user_id=1, chat_id=100)
+    await on_document(upd, FakeContext(store, cfg))
+
+    assert list(work.glob("job_*")) == []  # orphan dir removed (FR-024)
+    assert store.has_active_job(1) is False  # user unblocked
+    assert any("couldn't download" in r.lower() or "try" in r.lower() for r in upd.message.replies)
 
 
 async def test_start_help_replies(tmp_path):

@@ -43,17 +43,29 @@ async def deliver(
     archive_chat_id: int,
     work_root: Path,
 ) -> None:
-    """Deliver ``apkg_path`` for ``job``: archive → user → ready message → scoped cleanup."""
+    """Deliver ``apkg_path`` for ``job``: archive → user → ready message → scoped cleanup.
+
+    Idempotent across restarts: each copy is sent only if its durable flag is not already set, and the
+    flag is recorded immediately after each successful send. A re-run (in-process retry or post-restart
+    resume) therefore sends ONLY the copy that had not yet gone out, and a fully-delivered job re-sends
+    nothing — exactly-once delivery (cycle 002, FR-023/IR-014).
+    """
     apkg_path = Path(apkg_path)
     filename = apkg_path.name
 
     store.set_state(job.id, JobState.UPLOADING)
+    # Read the latest flags so an in-process retry within this call also skips already-sent copies.
+    current = store.get(job.id) or job
     # 1) operator archive backup FIRST (FR-022). If this raises, the package is retained (FR-026).
-    await sender.send_document(
-        archive_chat_id, apkg_path, filename=filename, caption=f"AnkiVoice backup: {filename}"
-    )
+    if not current.archive_sent:
+        await sender.send_document(
+            archive_chat_id, apkg_path, filename=filename, caption=f"AnkiVoice backup: {filename}"
+        )
+        store.set_delivery_flag(job.id, archive=True)
     # 2) the requesting user.
-    await sender.send_document(job.chat_id, apkg_path, filename=filename)
+    if not current.user_sent:
+        await sender.send_document(job.chat_id, apkg_path, filename=filename)
+        store.set_delivery_flag(job.id, user=True)
     # Both copies are out — mark DELIVERED immediately so a crash here does not re-deliver (FR-023).
     store.set_state(job.id, JobState.DELIVERED)
     # 3) friendly confirmation — BEST-EFFORT: a failure here must not prevent cleanup (FR-024).

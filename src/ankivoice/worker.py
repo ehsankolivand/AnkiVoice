@@ -41,12 +41,15 @@ class Worker:
         sender: Sender,
         config: Config,
         poll_interval: float = 0.25,
+        delivery_backoff_base: float = 0.5,
     ) -> None:
         self.store = store
         self.synthesizer = synthesizer
         self.sender = sender
         self.config = config
         self.poll_interval = poll_interval
+        # Base for exponential backoff between bounded delivery retries (tests pass 0.0 for speed).
+        self.delivery_backoff_base = delivery_backoff_base
         self._delivery_tasks: set[asyncio.Task] = set()
 
     async def resume(self) -> None:
@@ -125,18 +128,35 @@ class Worker:
         task.add_done_callback(self._delivery_tasks.discard)
 
     async def _deliver(self, job: Job, apkg_path: Path) -> None:
-        try:
-            await deliver(
-                job,
-                apkg_path,
-                sender=self.sender,
-                store=self.store,
-                archive_chat_id=self.config.archive_chat_id,
-                work_root=self.config.work_dir,
-            )
-        except Exception:
-            # Retain the package and leave the job non-terminal so a restart resumes it (FR-026).
-            logger.exception("delivery failed for job %s; retained for resume", job.id)
+        # Bounded in-process retry with exponential backoff before deferring to restart (FR-026,
+        # IR-015). deliver() is idempotent (per-copy flags), so a retry never double-sends.
+        attempts = max(1, self.config.delivery_retries)
+        for attempt in range(1, attempts + 1):
+            try:
+                await deliver(
+                    job,
+                    apkg_path,
+                    sender=self.sender,
+                    store=self.store,
+                    archive_chat_id=self.config.archive_chat_id,
+                    work_root=self.config.work_dir,
+                )
+                return
+            except Exception:
+                if attempt < attempts:
+                    logger.warning(
+                        "delivery attempt %d/%d failed for job %s; retrying", attempt, attempts, job.id
+                    )
+                    backoff = self.delivery_backoff_base * (2 ** (attempt - 1))
+                    if backoff > 0:
+                        await asyncio.sleep(backoff)
+                else:
+                    # Retain the package and leave the job non-terminal so a restart resumes it (FR-026).
+                    logger.exception(
+                        "delivery failed for job %s after %d attempts; retained for resume",
+                        job.id,
+                        attempts,
+                    )
 
     async def _fail(self, job: Job, user_message: str, *, reason: str) -> None:
         self.store.set_state(job.id, JobState.FAILED, error_reason=reason)
