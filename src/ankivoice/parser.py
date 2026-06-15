@@ -1,18 +1,22 @@
 """Deck parsing & validation (load-bearing).
 
-Reads a tab-separated Anki text export into usable cards. Field extraction uses the stdlib ``csv``
-reader (delimiter = TAB), which correctly removes CSV-style surrounding quotes and collapses doubled
-quotes (``""`` → ``"``) — so the spoken AND displayed text both have transport quoting removed
-(FR-011). HTML entities are KEPT in the displayed text (Anki renders them with ``html:true``) and
-decoded only for the spoken text via :func:`clean_for_speech`. Original card text is otherwise
-preserved exactly (FR-012).
+Reads a tab-separated Anki text export into usable cards. Parsing is **line by line** so input rows can
+never merge: each data line is split into tab-separated fields, the first two are Front and Back
+(additional columns are ignored, FR-003), and a field is unwrapped of CSV-style transport quoting
+**only when it is a complete balanced quoted field** (``"…"`` with internal ``""`` un-doubled, FR-011).
+This matches what a normal import shows while preserving literal quotes in hand-edited fields
+byte-for-byte (FR-012) and guaranteeing one card per usable row (FR-008).
+
+Cycle 002 fixes (see specs/002-quality-bugfix-perf/audit-notes.md): a leading/unbalanced quote no
+longer swallows following rows or strips literal quotes (A1); a leading UTF-8 BOM is stripped (A2,
+``utf-8-sig``); a Back that cleans to whitespace is skipped+counted (A4). HTML entities are KEPT in the
+displayed text (Anki renders them with ``html:true``) and decoded only for the spoken text.
 """
 
 from __future__ import annotations
 
-import csv
 import html
-import io
+import re
 
 from .errors import ValidationError
 from .models import Card, ParsedDeck
@@ -22,14 +26,30 @@ _EXPECTED_FORMAT = (
     "Export from Anki as 'Notes in Plain Text (.txt)'."
 )
 
+# A complete balanced RFC-4180-style quoted field: opens and closes with a double-quote, every interior
+# double-quote doubled. Only such fields are transport quoting; anything else is literal user content.
+_BALANCED_QUOTED = re.compile(r'^"(?:[^"]|"")*"$', re.DOTALL)
+
+
+def _unwrap_balanced(field: str) -> str:
+    """Strip CSV transport quoting from a field IFF it is a complete balanced quoted field.
+
+    Genuine Anki exports escape literal quotes as ``""`` inside a wrapped field, so a wrapped field is
+    always balanced and round-trips. A field that merely starts with a quote (hand-edited) is left
+    exactly as-is, so its characters are preserved byte-for-byte (FR-012).
+    """
+    if len(field) >= 2 and _BALANCED_QUOTED.match(field):
+        return field[1:-1].replace('""', '"')
+    return field
+
 
 def clean_for_speech(field: str) -> str:
-    """Return text suitable for speech synthesis: HTML entities decoded (FR-011).
+    """Return text suitable for speech: balanced transport-quote unwrap, then HTML entities decoded.
 
-    CSV quote-unwrapping is handled structurally by the parser's csv reader, so this function only
-    needs to decode entities. It is intentionally idempotent on already-clean text.
+    This is the spoken-text transform (FR-011): the same transport decoding applied to the displayed
+    field, plus entity decoding so the audio sounds natural. Idempotent on already-clean text.
     """
-    return html.unescape(field)
+    return html.unescape(_unwrap_balanced(field))
 
 
 def parse_deck(raw: bytes, *, max_cards: int) -> ParsedDeck:
@@ -37,10 +57,13 @@ def parse_deck(raw: bytes, *, max_cards: int) -> ParsedDeck:
 
     Rejections (friendly, actionable): ``WRONG_FORMAT`` (undecodable UTF-8, or no row has a TAB),
     ``TOO_MANY_CARDS`` (> ``max_cards``), ``EMPTY`` (TABs present but zero usable cards). Rows whose
-    Back is empty, or rows with no TAB, are skipped and counted (FR-008). Front may be empty (FR-003).
+    Back is empty / whitespace-only / cleans to nothing, and rows with no TAB, are skipped and counted
+    (FR-008). Front may be empty (FR-003).
     """
     try:
-        text = raw.decode("utf-8")
+        # utf-8-sig strips a leading byte-order mark (common on Windows exports) but is otherwise
+        # identical to utf-8 and still raises on truly non-UTF-8 bytes (A2, FR-004).
+        text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
         raise ValidationError(
             code="WRONG_FORMAT",
@@ -52,39 +75,36 @@ def parse_deck(raw: bytes, *, max_cards: int) -> ParsedDeck:
 
     # Normalize line endings so \r\n / lone \r neither corrupt a field nor merge rows.
     text = text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = text.split("\n")
 
-    # Skip the leading, contiguous block of Anki header lines (e.g. "#separator:tab"), preserving the
-    # rest verbatim. Once a non-header line is seen, later '#' lines are treated as data (FR-002).
-    lines = text.splitlines(keepends=True)
+    # Skip the leading, contiguous block of Anki header lines (e.g. "#separator:tab"). Once a non-header
+    # line is seen, later '#' lines are treated as data (FR-002).
     start = 0
     while start < len(lines) and lines[start].lstrip().startswith("#"):
         start += 1
-    body = "".join(lines[start:])
 
     cards: list[Card] = []
     skipped_empty_back = 0
     saw_tab = False
 
-    # csv.reader over a StringIO (a file-like) so multiline quoted fields parse correctly; a malformed
-    # file (e.g. an unterminated quote) raises csv.Error → friendly WRONG_FORMAT rather than a crash.
-    try:
-        for row in csv.reader(io.StringIO(body), delimiter="\t", quotechar='"'):
-            if not row or (len(row) == 1 and row[0].strip() == ""):
-                continue  # blank line — not a row, not counted
-            if len(row) < 2:
-                skipped_empty_back += 1  # a real line with no TAB → no Back (FR-008)
-                continue
-            saw_tab = True
-            front, back = row[0], row[1]  # extra columns (row[2:]) ignored (FR-003)
-            if back.strip() == "":
-                skipped_empty_back += 1  # empty Back → cannot be voiced (FR-008)
-                continue
-            cards.append(Card(front=front, back=back, spoken=clean_for_speech(back)))
-    except csv.Error:
-        raise ValidationError(
-            code="WRONG_FORMAT",
-            user_message="I couldn't parse that file — it looks malformed. " + _EXPECTED_FORMAT,
-        ) from None
+    for line in lines[start:]:
+        if line.strip() == "":
+            continue  # blank line — not a row, not counted
+        fields = line.split("\t")
+        if len(fields) < 2:
+            skipped_empty_back += 1  # a real line with no TAB → no Back (FR-008)
+            continue
+        saw_tab = True
+        front = _unwrap_balanced(fields[0])  # extra columns (fields[2:]) ignored (FR-003)
+        back = _unwrap_balanced(fields[1])
+        if back.strip() == "":
+            skipped_empty_back += 1  # empty Back → cannot be voiced (FR-008)
+            continue
+        spoken = clean_for_speech(fields[1])
+        if spoken.strip() == "":
+            skipped_empty_back += 1  # Back cleans to whitespace (e.g. "&#32;") → cannot be voiced (A4)
+            continue
+        cards.append(Card(front=front, back=back, spoken=spoken))
 
     if not saw_tab:
         raise ValidationError(

@@ -14,6 +14,47 @@ def test_clean_decodes_html_entities():
     assert clean_for_speech("plain text") == "plain text"
 
 
+def test_clean_for_speech_unwraps_balanced_then_unescapes():
+    # cycle 002: clean_for_speech now does balanced-transport-unwrap THEN html.unescape (matches contract)
+    assert clean_for_speech('"He said ""hi"" &amp; left."') == 'He said "hi" & left.'
+    # a NON-balanced leading quote is NOT unwrapped (literal content)
+    assert clean_for_speech('"Break a leg" means good luck.') == '"Break a leg" means good luck.'
+
+
+# --- cycle 002 regression: CSV reader misuse must not swallow rows or strip literal quotes (audit A1) ---
+
+def test_unbalanced_leading_quote_does_not_swallow_following_rows():
+    raw = b'q1\t"This quote is unbalanced.\nq2\tThis row gets swallowed.\nq3\tAnd this one too.\n'
+    deck = parse_deck(raw, max_cards=50)
+    assert len(deck.cards) == 3  # was 1 before the fix (rows merged)
+    assert deck.cards[0].back == '"This quote is unbalanced.'  # literal quote preserved (FR-012)
+    assert deck.cards[1].back == "This row gets swallowed."
+    assert deck.cards[2].back == "And this one too."
+
+
+def test_literal_leading_quote_preserved_in_display():
+    deck = parse_deck(b'idiom\t"Break a leg" means good luck.\n', max_cards=10)
+    assert deck.cards[0].back == '"Break a leg" means good luck.'  # not a balanced field → verbatim
+    # spoken decodes entities but the literal quotes remain (not transport quoting)
+    assert deck.cards[0].spoken == '"Break a leg" means good luck.'
+
+
+def test_utf8_bom_does_not_leak_a_header_card(sample_deck_bytes):
+    # A Windows export saved with a BOM must still skip the #header block (audit A2).
+    raw = "﻿#separator:tab\n#html:true\n#columns:Front\tBack\ngreeting\tHello there.\n".encode("utf-8")
+    deck = parse_deck(raw, max_cards=10)
+    assert len(deck.cards) == 1
+    assert deck.cards[0].front == "greeting" and deck.cards[0].back == "Hello there."
+    assert all(not c.front.startswith("#") for c in deck.cards)
+
+
+def test_back_that_cleans_to_whitespace_is_skipped(sample_deck_bytes):
+    # A Back of only an encoded space cannot be voiced → skipped + counted (audit A4).
+    deck = parse_deck(b"a\t&#32;\nb\tReal answer here.\n", max_cards=10)
+    assert [c.back for c in deck.cards] == ["Real answer here."]
+    assert deck.skipped_empty_back == 1
+
+
 # --- parse_deck happy path against the realistic fixture ---
 
 def _by_front(deck, front):

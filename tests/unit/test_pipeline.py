@@ -1,5 +1,6 @@
 """T017 — core conversion pipeline (load-bearing). Dedupe, fidelity, media count."""
 
+import hashlib
 import json
 import zipfile
 
@@ -7,6 +8,19 @@ import pytest
 
 from ankivoice.errors import ValidationError
 from ankivoice.pipeline import build_package
+
+
+def test_mp3_filename_uses_full_sha256_digest(work_dir, fake_synth):
+    # cycle 002 (audit A3): a 16-hex (64-bit) prefix could collide across distinct sentences and
+    # overwrite audio. The filename must use the FULL hexdigest of the spoken text.
+    raw = b"a\tThe one and only sentence.\n"
+    job_dir = work_dir / "job_fd"
+    job_dir.mkdir()
+    build_package(raw, fake_synth, job_dir=job_dir, max_cards=10, deck_name="d", mp3_quality="4")
+    expected = hashlib.sha256("The one and only sentence.".encode("utf-8")).hexdigest() + ".mp3"
+    names = {p.name for p in job_dir.glob("*.mp3")}
+    assert names == {expected}
+    assert len(expected) == 64 + 4  # full digest, not truncated
 
 
 def test_dedupes_identical_spoken_synthesizes_once(work_dir, fake_synth):

@@ -69,6 +69,15 @@ def build_apkg(
     Each card becomes a note ``[Front, Back, "[sound:<audio_filename>]"]``. ``media_paths`` are the
     filesystem paths bundled as media (each basename must match a card's ``audio_filename``).
     """
+    # Every card's [sound:] basename MUST have a bundled media file, else the card would ship with
+    # broken audio (cycle 002, audit E1). Fail loudly here rather than produce a silently-broken deck.
+    media_basenames = {Path(p).name for p in media_paths}
+    missing = sorted({c.audio_filename for c in cards if c.audio_filename not in media_basenames})
+    if missing:
+        raise ValueError(
+            f"card audio file(s) not bundled as media: {missing} (media has {sorted(media_basenames)})"
+        )
+
     model = _build_model()
     deck = genanki.Deck(DECK_ID, deck_name)
     for index, card in enumerate(cards):

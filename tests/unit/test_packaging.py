@@ -116,6 +116,15 @@ def test_empty_front_still_generates_a_studyable_card(tmp_path):
     assert notes == 1 and cards == 1
 
 
+def test_build_apkg_rejects_card_audio_without_matching_media(tmp_path):
+    # cycle 002 (audit E1): a card's [sound:] basename must have a bundled media file, else the card
+    # would ship with silent/broken audio. build_apkg must refuse rather than produce a broken deck.
+    m = _write_mp3(tmp_path / "present.mp3")
+    out = tmp_path / "mismatch.apkg"
+    with pytest.raises(ValueError, match="audio"):
+        build_apkg([MediaCard("F", "B", "absent.mp3")], [m], out, deck_name="d")
+
+
 def test_identical_rows_stay_two_distinct_cards(tmp_path):
     # Regression (self-review): two identical export rows must not collapse into one card on import.
     m = _write_mp3(tmp_path / "a.mp3")

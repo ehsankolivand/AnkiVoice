@@ -40,7 +40,9 @@ def build_package(
 
     for card in parsed.cards:
         if card.spoken not in filename_by_spoken:
-            digest = hashlib.sha256(card.spoken.encode("utf-8")).hexdigest()[:16]
+            # Full sha256 hexdigest (not a 16-hex prefix): a truncated prefix could collide across two
+            # distinct sentences and overwrite one card's audio (cycle 002, audit A3).
+            digest = hashlib.sha256(card.spoken.encode("utf-8")).hexdigest()
             filename = f"{digest}.mp3"
             path = job_dir / filename
             samples = synthesizer.synthesize(card.spoken)
