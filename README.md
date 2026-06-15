@@ -48,7 +48,7 @@ or your own numeric user id — the bot sends a backup copy of every delivered d
 
 ```bash
 # on the VPS, as root (or with sudo):
-git clone <this-repo-url> ankivoice
+git clone https://github.com/ehsankolivand/AnkiVoice ankivoice
 cd ankivoice
 sudo ./install.sh --token <BOT_TOKEN> --archive-id <ARCHIVE_CHAT_ID>
 # …or run `sudo ./install.sh` with no value flags and it will prompt for the two values.
