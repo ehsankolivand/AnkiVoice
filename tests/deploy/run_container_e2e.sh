@@ -106,7 +106,8 @@ else
 fi
 
 step "Assert service state + artifacts"
-check "service enabled-on-boot" bash -c "dex systemctl is-enabled ankivoice | grep -q enabled"
+dexb 'systemctl is-enabled ankivoice | grep -q enabled' \
+  && ok "service enabled-on-boot" || bad "service not enabled-on-boot"
 dexb 'journalctl -u ankivoice --no-pager 2>/dev/null | grep -q "Starting AnkiVoice (long-polling)"' \
   && ok "journal shows preflight passed + long-polling start" || bad "no long-polling/preflight-green line in journal"
 dexb 'journalctl -u ankivoice --no-pager 2>/dev/null | grep -qi "Startup preflight failed\|cannot start"' \
@@ -127,7 +128,8 @@ before="$(dexb 'sha256sum /opt/ankivoice/.env' 2>/dev/null | awk '{print $1}')"
 if dexb 'cd /root/ankivoice && ./install.sh --non-interactive'; then ok "re-run exited 0"; else bad "re-run failed"; fi
 after="$(dexb 'sha256sum /opt/ankivoice/.env' 2>/dev/null | awk '{print $1}')"
 [ -n "$before" ] && [ "$before" = "$after" ] && ok ".env unchanged byte-for-byte on re-run" || bad ".env changed on re-run ($before -> $after)"
-check "still enabled after re-run" bash -c "dex systemctl is-enabled ankivoice | grep -q enabled"
+dexb 'systemctl is-enabled ankivoice | grep -q enabled' \
+  && ok "still enabled after re-run" || bad "not enabled after re-run"
 
 step "Uninstall (default): unit removed, files kept"
 dexb 'cd /root/ankivoice && ./uninstall.sh' && ok "uninstall.sh exited 0" || bad "uninstall.sh failed"

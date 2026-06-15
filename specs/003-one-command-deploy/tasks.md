@@ -182,7 +182,7 @@ active, and never clobbers `.env`. **Independent test**: quickstart §E.
   **same test count** as before this feature and that no `src/ankivoice/*.py` or existing test was
   changed (`git diff --stat` touches only deploy/docs/pyproject/lock); confirm `uv run pytest -m
   live` still self-skips. (FR-016, FR-018; SC-006.)
-- [ ] T023 Full container proof: execute quickstart §A–H in a throwaway systemd `debian:12`
+- [x] T023 Full container proof: execute quickstart §A–H in a throwaway systemd `debian:12`
   container and record the evidence (service active/enabled + preflight green + idempotent `.env` +
   refusals + clean `--purge`) into the handoff. Run the whole `tests/deploy/` suite where docker is
   available. Confirm the running service exposes no inbound port (long-polling only). (SC-001..SC-005,
