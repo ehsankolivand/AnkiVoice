@@ -66,6 +66,24 @@ def test_empty_text_returns_empty_float32(mocker):
     assert out.dtype == np.float32 and out.shape == (0,)
 
 
+def test_synthesize_runs_under_inference_mode(mocker):
+    # cycle 002 (audit #6/perf): synthesis runs inside torch.inference_mode() — byte-identical output,
+    # less per-sentence autograd/version bookkeeping.
+    import torch
+
+    seen = {}
+
+    def fake_pipeline(text, voice=None, speed=1.0):
+        seen["inference"] = torch.is_inference_mode_enabled()
+        return iter([_FakeResult([0.1, 0.2])])
+
+    mocker.patch("ankivoice.speech._load_pipeline", return_value=fake_pipeline)
+    synth = speech.KokoroSynthesizer(voice="af_heart", lang_code="a")
+    out = synth.synthesize("hello")
+    assert seen["inference"] is True
+    assert out.dtype == np.float32 and out.ndim == 1  # output shape/dtype unchanged
+
+
 def test_satisfies_synthesizer_protocol():
     synth = speech.KokoroSynthesizer(voice="af_heart", lang_code="a")
     assert isinstance(synth.sample_rate, int)

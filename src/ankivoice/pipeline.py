@@ -25,6 +25,7 @@ def build_package(
     max_cards: int,
     deck_name: str,
     mp3_quality: str = "4",
+    ffmpeg_timeout: float = 120.0,
 ) -> Path:
     """Turn raw deck bytes into a ``.apkg`` inside ``job_dir``; return its path.
 
@@ -46,7 +47,7 @@ def build_package(
             filename = f"{digest}.mp3"
             path = job_dir / filename
             samples = synthesizer.synthesize(card.spoken)
-            encode_mp3(samples, synthesizer.sample_rate, path, quality=mp3_quality)
+            encode_mp3(samples, synthesizer.sample_rate, path, quality=mp3_quality, timeout=ffmpeg_timeout)
             filename_by_spoken[card.spoken] = filename
             media_paths.append(path)
         media_cards.append(

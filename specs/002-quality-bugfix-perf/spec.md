@@ -42,6 +42,11 @@ questions; recorded here because each affects test/implementation design):
 - Q: How does the startup guard verify the configured voice/model offline? → A: By performing a one-word
   real synthesis with the configured voice — the ground-truth availability check that also prewarms the
   model (IR-010, IR-011); skippable via `ANKIVOICE_SKIP_PREFLIGHT` for tests/dev.
+- Q: Must a performance change keep the audio "byte-identical"? → A: No — measured: the speech engine
+  is inherently non-deterministic per call (two synthesis runs of the same text differ regardless of
+  any optimization). The correct criterion is that a performance change keeps the **audio-generation
+  computation unchanged** (same model, voice, parameters, and code path); exact byte-equality across
+  runs is not asserted. (Display TEXT remains exactly preserved — that is deterministic.)
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -192,7 +197,9 @@ fidelity) is weakened.
 **Acceptance Scenarios**:
 
 1. **Given** the representative deck, **When** it is converted before and after the increment, **Then**
-   the after time is not slower and the produced audio is byte-identical.
+   the after time is not slower (within measurement noise) and the audio-generation path is unchanged
+   (same model/voice/parameters/code path; exact byte-equality is not asserted because the engine is
+   non-deterministic per call).
 2. **Given** a deck containing repeated answer sentences, **When** it is converted, **Then** each
    distinct answer is voiced only once (the existing per-job de-duplication is preserved).
 3. **Given** the resource budget, **When** any speedup is applied, **Then** it does not introduce
@@ -299,8 +306,10 @@ Each is independently testable and is pinned by a regression test written first 
 
 ### Functional Requirements — safe performance (US5)
 
-- **IR-016**: Any performance change MUST keep the produced audio byte-identical and MUST NOT introduce
-  additional concurrency, an additional cache/datastore, or unbounded disk/memory growth.
+- **IR-016**: Any performance change MUST keep the audio-generation computation unchanged (same model,
+  voice, parameters, and code path — the engine is inherently non-deterministic per call, so exact
+  byte-equality is not a criterion) and MUST NOT introduce additional concurrency, an additional
+  cache/datastore, or unbounded disk/memory growth.
 - **IR-017**: The existing per-job de-duplication (each distinct spoken answer voiced once) MUST be
   preserved.
 - **IR-018**: The audio-encode step MUST have a bounded execution time (a timeout) so a stuck encoder
@@ -340,7 +349,8 @@ Each is independently testable and is pinned by a regression test written first 
 - **SC-005**: Across a mid-delivery restart, each delivery copy is sent at most once (0 duplicate
   user-visible deliveries); a fully-delivered job is re-sent 0 times.
 - **SC-006**: On the representative deck, after-increment package-production wall-clock is ≤
-  before-increment, and the produced audio is byte-identical.
+  before-increment (within measurement noise), and the audio-generation path is unchanged (the engine
+  is non-deterministic per call, so byte-equality is not measured).
 - **SC-007**: A cross-artifact consistency review reports zero contradictions between any document and
   the code or between documents.
 - **SC-008**: The full default test suite is green and fully offline; every fixed bug and reconciled

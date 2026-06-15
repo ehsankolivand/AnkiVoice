@@ -47,6 +47,38 @@ def test_encode_mp3_accepts_2d_mono_and_flattens(tmp_path):
 
 
 def test_encode_mp3_raises_clearly_when_ffmpeg_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(audio, "_ffmpeg_path", None)  # reset the memo for this test
     monkeypatch.setattr(audio.shutil, "which", lambda name: None)
     with pytest.raises(RuntimeError, match="ffmpeg"):
         encode_mp3(_tone(), 24000, tmp_path / "x.mp3", quality="4")
+
+
+def test_encode_mp3_resolves_ffmpeg_path_only_once(tmp_path, monkeypatch):
+    # cycle 002 (audit #15/perf): the ffmpeg binary is resolved once and memoized, not re-scanned per
+    # encoded sentence.
+    monkeypatch.setattr(audio, "_ffmpeg_path", None)
+    real = shutil.which("ffmpeg")
+    calls = {"n": 0}
+
+    def counting(name):
+        if name == "ffmpeg":
+            calls["n"] += 1
+        return real
+
+    monkeypatch.setattr(audio.shutil, "which", counting)
+    encode_mp3(_tone(), 24000, tmp_path / "a.mp3", quality="4")
+    encode_mp3(_tone(), 24000, tmp_path / "b.mp3", quality="4")
+    assert calls["n"] == 1  # resolved once across two encodes
+
+
+def test_encode_mp3_times_out_with_clear_error(tmp_path, monkeypatch):
+    # cycle 002 (audit A5/IR-018): a stuck encoder must not hang the single worker — encode aborts with
+    # a clear error after the timeout.
+    monkeypatch.setattr(audio, "_ffmpeg_path", None)
+
+    def boom(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd="ffmpeg", timeout=kwargs.get("timeout", 1))
+
+    monkeypatch.setattr(audio.subprocess, "run", boom)
+    with pytest.raises(RuntimeError, match="time"):
+        encode_mp3(_tone(), 24000, tmp_path / "x.mp3", quality="4", timeout=1)

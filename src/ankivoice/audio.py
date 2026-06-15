@@ -15,20 +15,38 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+# Memoized ffmpeg path: resolved once and reused across encodes (removes a PATH scan per unique
+# sentence — cycle 002, audit #15). Stays None until first successful resolution so a later install is
+# still picked up; tests reset it via monkeypatch.
+_ffmpeg_path: str | None = None
 
-def encode_mp3(
-    samples: np.ndarray, sample_rate: int, out_path: Path | str, *, quality: str = "4"
-) -> Path:
-    """Encode mono float32 ``samples`` to an MP3 at ``out_path``. Returns the path.
 
-    Raises ``RuntimeError`` if ffmpeg is missing or the encode fails.
-    """
-    ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg is None:
+def _resolve_ffmpeg() -> str:
+    global _ffmpeg_path
+    if _ffmpeg_path is None:
+        _ffmpeg_path = shutil.which("ffmpeg")
+    if _ffmpeg_path is None:
         raise RuntimeError(
             "ffmpeg was not found on PATH. Install ffmpeg (with libmp3lame) to encode audio "
             "(e.g. `apt-get install ffmpeg` or `brew install ffmpeg`)."
         )
+    return _ffmpeg_path
+
+
+def encode_mp3(
+    samples: np.ndarray,
+    sample_rate: int,
+    out_path: Path | str,
+    *,
+    quality: str = "4",
+    timeout: float = 120.0,
+) -> Path:
+    """Encode mono float32 ``samples`` to an MP3 at ``out_path``. Returns the path.
+
+    Raises ``RuntimeError`` if ffmpeg is missing, the encode fails, or it exceeds ``timeout`` seconds
+    (so a stuck encoder cannot hang the single worker — cycle 002, IR-018).
+    """
+    ffmpeg = _resolve_ffmpeg()
 
     data = np.asarray(samples, dtype=np.float32).reshape(-1)  # ensure 1-D mono float32
     buf = io.BytesIO()
@@ -44,7 +62,13 @@ def encode_mp3(
         "-qscale:a", str(quality),  # VBR; clear speech at small size (research.md)
         str(out_path),
     ]
-    proc = subprocess.run(cmd, input=wav_bytes, capture_output=True)
+    try:
+        proc = subprocess.run(cmd, input=wav_bytes, capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"ffmpeg MP3 encode timed out after {timeout}s for {out_path}; aborting so the worker is "
+            f"not blocked."
+        ) from exc
     if proc.returncode != 0:
         raise RuntimeError(
             f"ffmpeg MP3 encode failed (exit {proc.returncode}): "

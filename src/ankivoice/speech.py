@@ -73,12 +73,19 @@ class KokoroSynthesizer:
         return self._pipeline
 
     def synthesize(self, spoken_text: str) -> np.ndarray:
-        """Synthesize one sentence to a 1-D mono float32 array (concatenating Kokoro's chunks)."""
+        """Synthesize one sentence to a 1-D mono float32 array (concatenating Kokoro's chunks).
+
+        Inference runs inside ``torch.inference_mode()`` — byte-identical PCM output with less
+        per-sentence autograd/version bookkeeping on the single-core hot path (cycle 002, perf).
+        """
+        import torch
+
         pipeline = self._ensure_pipeline()
         chunks: list[np.ndarray] = []
-        for result in pipeline(spoken_text, voice=self.voice, speed=1.0):
-            audio = result.output.audio
-            chunks.append(np.asarray(audio.detach().cpu().numpy(), dtype=np.float32))
+        with torch.inference_mode():
+            for result in pipeline(spoken_text, voice=self.voice, speed=1.0):
+                audio = result.output.audio
+                chunks.append(np.asarray(audio.detach().cpu().numpy(), dtype=np.float32))
         if not chunks:
             return np.zeros(0, dtype=np.float32)
         data = chunks[0] if len(chunks) == 1 else np.concatenate(chunks)

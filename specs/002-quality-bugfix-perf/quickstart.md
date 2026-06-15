@@ -28,8 +28,9 @@ uv run pytest -m live    # opt-in real Kokoro + real .apkg (self-skips if model/
    `tests/unit/test_worker.py` (bounded retry then retain-for-resume; resume re-sends only the missing
    copy).
 5. **US5 — safe speedup** (IR-016..018): `perf-notes.md` records before/after on the representative deck
-   (byte-identical audio); `test_audio.py` (encode timeout); `test_pipeline.py` (dedupe preserved;
-   full-digest filename).
+   (build time unchanged within noise — synthesis is model-bound; the engine is non-deterministic per
+   call so byte-equality is not asserted); `test_audio.py` (encode timeout + memoized path);
+   `test_speech_wrapper.py` (inference_mode); `test_pipeline.py` (dedupe preserved; full-digest filename).
 6. **US6 — one consistent story** (IR-019,020): `uv run` the `/speckit-analyze` consistency pass → zero
    contradictions; spot-check that 001 spec/plan/data-model/research/contracts/tasks and `CLAUDE.md`
    describe the reconciled behaviours identically.
@@ -41,4 +42,5 @@ uv run pytest -m live    # opt-in real Kokoro + real .apkg (self-skips if model/
 - Misconfigured host → service refuses to start with a specific message.
 - After N decks: no temp files outside job dirs; ≤ `ANKIVOICE_JOB_HISTORY` terminal rows; disk flat.
 - No duplicate deliveries across a mid-delivery restart.
-- Representative-deck time ≤ baseline; audio byte-identical.
+- Representative-deck time ≤ baseline within noise (synthesis is model-bound); audio-generation path
+  unchanged (engine non-deterministic per call, so byte-equality is not measured).

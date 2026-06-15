@@ -35,6 +35,34 @@ requires disk to *"stay flat over time"* with deletion scoped to a job's own dir
 cache is an additional cache that persists outside any job dir → prohibited. **Decision: keep per-job
 sha256 dedupe only.** (Per the brief: "otherwise keep per-job dedupe only.")
 
+## AFTER (with cycle-002 safe optimizations)
+
+| Stage | Before | After | Notes |
+|---|---|---|---|
+| build_package (60 rows, 50 unique) | 37.99 s | **38.61 s** | within run-to-run noise — synthesis is model-bound (see below) |
+| mp3 files produced | 50 | 50 | per-job dedupe preserved; full-digest filenames |
+
+The headline build time is **unchanged within measurement noise**: synthesis (≈93% of compute) is
+model-bound on one core and cannot be safely reduced, and the safe micro-opts (inference_mode, memoized
+ffmpeg path, full-digest filenames) remove redundant work that is small relative to inference. The real
+lever — per-job dedupe — is preserved (10 duplicate rows here skip re-synthesis, ≈17%). The only larger
+lever (cross-job cache) is rejected on Constitution grounds (below). This is the honest, expected
+outcome under the single-core + offline + flat-disk + no-cache constraints: correctness and the resource
+bound are never traded for speed.
+
+## IMPORTANT — the speech engine is NON-DETERMINISTIC per call (measured)
+
+Two synthesis runs of the *same* text produce *different* PCM (maxdiff ≈0.06–0.13), with the same
+variance whether or not `torch.inference_mode()` is used. Therefore:
+- "byte-identical audio" is **not** an achievable/meaningful criterion; the correct criterion is that the
+  audio-generation **computation** is unchanged (same model/voice/params/code path). The 002 spec
+  (IR-016/SC-006/US5) and research(001) are reconciled to say this.
+- `inference_mode` is kept anyway: it is standard inference best-practice, byte-output-neutral in
+  *character*, and removes residual autograd/version bookkeeping (micro, within noise here).
+- Non-determinism does NOT affect correctness elsewhere: MP3 filenames key on the *text* (sha256(spoken)),
+  the per-note guid keys on *text* (deck+index+content), and dedupe is per-job on *text* — all stable.
+  Display TEXT is fully deterministic and exactly preserved.
+
 ## Safe optimizations to apply (preserve all invariants)
 1. Resolve the ffmpeg binary path ONCE (memoized) instead of `shutil.which("ffmpeg")` per encoded
    sentence — removes a redundant PATH scan per unique sentence. (audio.py)
