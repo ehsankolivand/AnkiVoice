@@ -10,6 +10,10 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "python-telegram-bot[ext]>=22.8",
     "soundfile>=0.14.0",
+    # spaCy English G2P model the speech engine already needs at runtime, pinned via its release
+    # wheel so `uv sync` keeps it (a plain sync prunes it — the cycle-002 drop). See
+    # specs/003-one-command-deploy/research.md D3. Compatible with the locked spaCy 3.8.x.
+    "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
 ]
 
 [project.scripts]
@@ -22,6 +26,11 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/ankivoice"]
 
+# Required because a dependency (en_core_web_sm) is pinned by direct URL (research.md D3);
+# hatchling otherwise refuses to build the project metadata with a direct reference present.
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.0",
@@ -33,7 +42,8 @@ dev = [
 testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
-addopts = "-m 'not live' -ra"
+addopts = "-m 'not live and not container' -ra"
 markers = [
     "live: exercises the real Kokoro model and a real .apkg import; opt-in, deselected by default (run with -m live)",
+    "container: heavy, opt-in deploy end-to-end (docker/systemd/network); deselected by default (run with -m container)",
 ]
