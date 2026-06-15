@@ -20,8 +20,11 @@ class Config:
     model_dir: Path | None    # local model/voice cache for offline use
     sample_rate: int          # confirmed in research.md
     mp3_quality: str          # encoder setting (research.md)
+    voice_sides: str          # "back" (default — voice the Back only) | "both" (also voice the Front)
+    # (cycle-002 operational limits job_history/ffmpeg_timeout/delivery_retries also present — see 002)
 
 def load_config(env: Mapping[str, str] = os.environ) -> Config: ...
+    # ANKIVOICE_VOICE_SIDES is normalized case-insensitively to "back"|"both"; anything else -> ConfigError.
     # Reads ANKIVOICE_* keys. Raises ConfigError listing every missing required key.
     # NEVER hard-codes secrets. Optionally loads a .env file first.
 ```
@@ -41,7 +44,8 @@ class ValidationError(Exception):
 class Card:
     front: str          # original, preserved (display)
     back: str           # original, preserved (display)
-    spoken: str         # cleaned text for synthesis only (never displayed)
+    spoken: str         # cleaned Back text for synthesis only (never displayed)
+    front_spoken: str = ""   # cleaned Front text for synthesis (both-sides mode); "" ⇒ no Front audio
 
 @dataclass(frozen=True)
 class ParsedDeck:
@@ -75,7 +79,8 @@ def parse_deck(raw: bytes, *, max_cards: int) -> ParsedDeck: ...
     # parses LINE BY LINE (rows never merge) — splits each data line into tab-separated fields and
     #   takes the first two as Front, Back; extra fields ignored (FR-003);
     # display front/back = balanced-unwrap(field); Front MAY be empty;
-    # spoken = clean_for_speech(back); a row is USABLE iff spoken.strip() != "" (FR-003, FR-008);
+    # spoken = clean_for_speech(back); front_spoken = clean_for_speech(front) (both-sides mode; empty/
+    #   whitespace ⇒ no Front audio); a row is USABLE iff spoken.strip() != "" (FR-003, FR-008);
     # skips + counts rows with empty Back, no TAB, OR a Back that cleans to whitespace (FR-008);
     # raises ValidationError(WRONG_FORMAT) if NO data row contains a TAB (not tab-separated, FR-004);
     # raises ValidationError(EMPTY) if TABs exist but zero usable cards remain (FR-005);
@@ -116,12 +121,17 @@ def encode_mp3(samples: FloatArray, sample_rate: int, out_path: Path,
 ```python
 @dataclass(frozen=True)
 class MediaCard:
-    front: str; back: str; audio_filename: str   # bare filename used in [sound:...]
+    front: str; back: str; audio_filename: str    # bare filename used in the Back [sound:...]
+    front_audio_filename: str | None = None        # Front [sound:...] (both mode); None ⇒ no Front audio
 
 def build_apkg(cards: Sequence[MediaCard], media_paths: Sequence[Path],
-               out_path: Path, *, deck_name: str) -> Path: ...
-    # Builds a deterministic-id note type whose ANSWER template shows the original Back
-    # plus [sound:<audio_filename>] (auto-play on reveal + replay button; FR-013..016),
+               out_path: Path, *, deck_name: str, voice_sides: str = "back") -> Path: ...
+    # back mode (default): deterministic-id 3-field note type whose ANSWER template shows the original
+    #   Back plus [sound:<audio_filename>] (auto-play on reveal + replay button; FR-013..016).
+    # both mode: a SECOND, distinct deterministic-id 4-field note type (adds FrontAudio); the QUESTION
+    #   template shows the Front plus [sound:<front_audio_filename>] (auto-play on the front + replay),
+    #   the ANSWER template is unchanged — the front arrives via {{FrontSide}}, which Anki does NOT
+    #   auto-replay (no re-blast; replay button still shown). Empty FrontAudio ⇒ no front [sound:].
     # attaches media_paths, writes the .apkg to out_path, returns out_path.
     # deck_name and out_path stem derive from the user's original filename stem, with a
     # generic fallback ("AnkiVoice deck" / "ankivoice.apkg") when unavailable (FR-031).
@@ -141,10 +151,13 @@ def output_name(original_filename: str | None) -> str: ...
 
 ```python
 def build_package(deck_bytes: bytes, synthesizer: Synthesizer, *, job_dir: Path,
-                  max_cards: int, deck_name: str, mp3_quality: str) -> Path: ...
-    # parse_deck(deck_bytes, max_cards) -> for each UNIQUE spoken (dedupe by sha256) call
-    # synthesizer.synthesize + audio.encode_mp3 into job_dir (identical sentences synthesize once);
-    # build_apkg(cards, media_paths, out=job_dir/<name>.apkg, deck_name=deck_name) -> returns apkg path.
+                  max_cards: int, deck_name: str, mp3_quality: str,
+                  voice_sides: str = "back") -> Path: ...
+    # parse_deck(deck_bytes, max_cards) -> for each UNIQUE spoken (dedupe by FULL sha256) call
+    # synthesizer.synthesize + audio.encode_mp3 into job_dir (identical sentences synthesize once). In
+    # both mode the Front is also voiced and the SAME cache spans both sides (a Front equal to some Back
+    # synthesizes once); an empty/whitespace Front is not voiced;
+    # build_apkg(cards, media_paths, out=job_dir/<name>.apkg, deck_name, voice_sides) -> apkg path.
     # Pure/synchronous (CPU-bound) — the worker runs it via asyncio.to_thread. Raises ValidationError
     # (propagated from the parser) for bad input. (FR-009..016, per-job dedupe = Constitution P1.)
 ```

@@ -55,6 +55,39 @@ def test_back_that_cleans_to_whitespace_is_skipped(sample_deck_bytes):
     assert deck.skipped_empty_back == 1
 
 
+# --- cleaned spoken form of the FRONT (both-sides voicing) ---
+
+def test_parser_produces_cleaned_front_spoken():
+    # the Front gets the same clean_for_speech transform as the Back, carried on the Card
+    deck = parse_deck(b"Tom &amp; Jerry\tThe answer sentence.\n", max_cards=10)
+    c = deck.cards[0]
+    assert c.front == "Tom &amp; Jerry"      # display preserved byte-for-byte (entities kept, FR-012)
+    assert c.front_spoken == "Tom & Jerry"   # cleaned for speech (entities decoded, FR-011)
+
+
+def test_empty_front_yields_no_front_audio():
+    # an empty Front has no spoken form → no Front audio; the empty-Front placeholder is never voiced
+    deck = parse_deck(b"\tThe only answer.\n", max_cards=10)
+    c = deck.cards[0]
+    assert c.front == ""
+    assert c.front_spoken.strip() == ""
+
+
+def test_front_cleaning_to_whitespace_yields_no_front_audio():
+    # a Front that cleans to whitespace (e.g. an encoded space) cannot be voiced → no Front audio
+    deck = parse_deck(b"&#32;\tThe only answer.\n", max_cards=10)
+    c = deck.cards[0]
+    assert c.front_spoken.strip() == ""
+
+
+def test_front_spoken_unwraps_balanced_then_unescapes():
+    # same transport-unwrap + entity-decode rule as the Back (clean_for_speech)
+    deck = parse_deck(b'"She said ""hi"" &amp; left."\tThe answer.\n', max_cards=10)
+    c = deck.cards[0]
+    assert c.front == 'She said "hi" &amp; left.'      # balanced unwrap for display; entities kept
+    assert c.front_spoken == 'She said "hi" & left.'   # + entity decode for speech
+
+
 # --- parse_deck happy path against the realistic fixture ---
 
 def _by_front(deck, front):

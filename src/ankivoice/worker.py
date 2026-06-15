@@ -109,6 +109,7 @@ class Worker:
                 deck_name=deck_name,
                 mp3_quality=self.config.mp3_quality,
                 ffmpeg_timeout=self.config.ffmpeg_timeout,
+                voice_sides=self.config.voice_sides,
             )
         except ValidationError as exc:
             await self._fail(job, exc.user_message, reason=exc.code)

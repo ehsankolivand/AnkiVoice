@@ -58,6 +58,59 @@ def test_media_count_equals_usable_cards(work_dir, fake_synth, sample_deck_bytes
         assert len(json.loads(z.read("media"))) == 6  # 6 usable cards, all unique sentences
 
 
+# --- both-sides voicing (ANKIVOICE_VOICE_SIDES=both) ---
+
+def test_back_mode_default_voices_back_only(work_dir, fake_synth):
+    # default (no voice_sides arg) voices ONLY the Back — today's behavior, unchanged
+    raw = b"Question one?\tAnswer one.\n"
+    job_dir = work_dir / "job_back"
+    job_dir.mkdir()
+    build_package(raw, fake_synth, job_dir=job_dir, max_cards=10, deck_name="d", mp3_quality="4")
+    assert fake_synth.calls == ["Answer one."]
+    assert len(list(job_dir.glob("*.mp3"))) == 1
+
+
+def test_both_mode_voices_front_and_back(work_dir, fake_synth):
+    raw = b"Question one?\tAnswer one.\n"
+    job_dir = work_dir / "job_both"
+    job_dir.mkdir()
+    build_package(
+        raw, fake_synth, job_dir=job_dir, max_cards=10, deck_name="d",
+        mp3_quality="4", voice_sides="both",
+    )
+    # front + back are distinct strings → two syntheses, two MP3s
+    assert sorted(fake_synth.calls) == ["Answer one.", "Question one?"]
+    assert len(list(job_dir.glob("*.mp3"))) == 2
+
+
+def test_both_mode_cross_side_dedupe_synthesizes_once(work_dir, fake_synth):
+    # identical cleaned text appearing on a Front AND a Back (anywhere in the deck) synthesizes once
+    raw = b"Hello there.\tSomething else.\nx\tHello there.\n"
+    job_dir = work_dir / "job_cross"
+    job_dir.mkdir()
+    build_package(
+        raw, fake_synth, job_dir=job_dir, max_cards=10, deck_name="d",
+        mp3_quality="4", voice_sides="both",
+    )
+    # distinct spoken strings: "Hello there." (front of c1 AND back of c2), "Something else.", "x"
+    assert sorted(fake_synth.calls) == ["Hello there.", "Something else.", "x"]
+    assert len(fake_synth.calls) == len(set(fake_synth.calls))  # each synthesized exactly once
+    assert len(list(job_dir.glob("*.mp3"))) == 3
+
+
+def test_both_mode_empty_front_is_back_only(work_dir, fake_synth):
+    # an empty Front yields NO Front audio even in both mode
+    raw = b"\tThe only answer.\n"
+    job_dir = work_dir / "job_ef"
+    job_dir.mkdir()
+    build_package(
+        raw, fake_synth, job_dir=job_dir, max_cards=10, deck_name="d",
+        mp3_quality="4", voice_sides="both",
+    )
+    assert fake_synth.calls == ["The only answer."]
+    assert len(list(job_dir.glob("*.mp3"))) == 1
+
+
 def test_validation_error_propagates(work_dir, fake_synth):
     job_dir = work_dir / "job_4"
     job_dir.mkdir()

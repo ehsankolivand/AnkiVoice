@@ -60,6 +60,9 @@ A requeued `uploading` job is rebuilt and re-delivered, but `deliver()` skips an
 - `back` (display): same fidelity rule as `front`.
 - `spoken`: `html.unescape(balanced-unwrap(back))`. A card is **usable** only if `spoken.strip() != ""`
   (a Back that cleans to whitespace is skipped + counted — IR-004).
+- `front_spoken` (additive, both-sides voicing): `html.unescape(balanced-unwrap(front))`, the cleaned
+  Front spoken form. Empty/whitespace ⇒ the card has **no Front audio** (the empty-Front placeholder is
+  never voiced). Used only when `ANKIVOICE_VOICE_SIDES=both`; the display `front` is unchanged.
 - `skipped_empty_back`: counts rows skipped for **any** non-usable reason — empty Back, no-TAB line, or
   blank-after-clean (the field name is retained for compatibility; its meaning is "skipped, not voiceable").
 
@@ -71,6 +74,7 @@ A requeued `uploading` job is rebuilt and re-delivered, but `deliver()` skips an
 | `ANKIVOICE_FFMPEG_TIMEOUT` | `120` | Seconds before an MP3 encode is aborted with a clear error (IR-018). |
 | `ANKIVOICE_DELIVERY_RETRIES` | `3` | Bounded delivery attempts (with backoff) before deferring to restart (IR-015). |
 | `ANKIVOICE_SKIP_PREFLIGHT` | unset | Test/dev escape hatch to skip the startup guard (IR-008..011). |
+| `ANKIVOICE_VOICE_SIDES` | `back` | `back` = voice the Back only (default, byte-identical output); `both` = also voice the Front question. Case-insensitive; unknown ⇒ ConfigError. |
 
 Already-present-but-now-documented (audit G12): `HF_HUB_OFFLINE` / `TRANSFORMERS_OFFLINE` are defaulted
 to `1` by the entrypoint unless `ANKIVOICE_ALLOW_DOWNLOADS` is set (e.g. for warm-up). `ANKIVOICE_MODEL_DIR`

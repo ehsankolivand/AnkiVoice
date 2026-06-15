@@ -152,3 +152,57 @@ def main() -> None: ...
   scoped-cleans the reserved dir and asks the user to resend.
 - No new user-visible messages otherwise; delivery retry is transparent (the user still gets exactly one
   package + one ready message — the post-DELIVERED cleanup is best-effort so a retry never re-sends it).
+
+## both-sides voicing (additive feature, opt-in)
+
+A small, additive change layered on the reconciled 002 behavior: optionally voice BOTH sides of each
+card (Front question + Back answer), not only the Back. Default is unchanged (`back`) and keeps output
+**byte-identical** to today (pinned by a golden `collection.anki2` hash regression). New/changed
+signatures only:
+
+```python
+# config.py
+@dataclass(frozen=True)
+class Config:
+    ...
+    voice_sides: str = "back"     # ANKIVOICE_VOICE_SIDES: "back" (default) | "both" (case-insensitive)
+# load_config: _as_voice_sides() normalizes/validates; an unknown value -> ConfigError.
+
+# models.py
+@dataclass(frozen=True)
+class Card:
+    ...
+    front_spoken: str = ""        # clean_for_speech(front); empty/whitespace ⇒ this card has NO Front audio
+
+# parser.py — parse_deck also sets front_spoken = clean_for_speech(fields[0]) (display front unchanged).
+
+# pipeline.py
+def build_package(..., voice_sides: str = "back") -> Path: ...
+    # back: voice the Back only (unchanged). both: also voice each non-empty cleaned Front. The per-job
+    # sha256(spoken) cache is shared across BOTH sides → identical text (front-vs-back, anywhere in the
+    # deck) synthesizes ONCE. All MP3s land in job_dir (flat disk, scoped cleanup preserved).
+
+# packaging.py
+MODEL_ID_BOTH = 1989327411        # distinct, deterministic note type so back/both decks coexist on import
+QFMT_BOTH = "{{Front}}{{#FrontAudio}}<br>{{FrontAudio}}{{/FrontAudio}}"   # front text + front [sound:]
+AFMT_BOTH = AFMT                  # unchanged answer template: front via {{FrontSide}} (NOT auto-replayed)
+
+@dataclass(frozen=True)
+class MediaCard:
+    ...
+    front_audio_filename: str | None = None      # Front [sound:...] basename; None ⇒ no Front audio
+
+def build_apkg(..., voice_sides: str = "back") -> Path: ...
+    # back: 3-field note [Front, Back, "[sound:<back>]"] + back model (BYTE-IDENTICAL to pre-change).
+    # both: 4-field note [Front, Back, "[sound:<back>]", "[sound:<front>]"|""] + both model. The E1
+    # media-completeness guard now also covers the Front [sound:]. guid scheme UNCHANGED for both modes
+    # (guid_for(deck_name, str(index), front, back, audio_filename)).
+```
+
+**Playback (verified against the Anki manual + genanki 0.13.1).** Front audio auto-plays on the
+question (replay button); back audio auto-plays on reveal (replay button). The answer template pulls
+the front in via `{{FrontSide}}`, and per the manual *"FrontSide will not automatically play any audio
+that was on the front side of the card"* — so the front audio does **not** re-blast on reveal, while
+its replay button is still shown. An empty-Front card is back-only (placeholder front, empty
+FrontAudio) and remains studyable (genanki `_req = [0,'any',[Front,FrontAudio]]`, satisfied by the
+placeholder).

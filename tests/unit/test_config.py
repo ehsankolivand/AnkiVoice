@@ -34,6 +34,8 @@ def test_loads_required_and_defaults():
     assert cfg.job_history == 500
     assert cfg.ffmpeg_timeout == 120
     assert cfg.delivery_retries == 3
+    # voice-sides: default voices only the Back (today's behavior)
+    assert cfg.voice_sides == "back"
 
 
 def test_overrides_from_env():
@@ -49,8 +51,10 @@ def test_overrides_from_env():
             ANKIVOICE_JOB_HISTORY="50",
             ANKIVOICE_FFMPEG_TIMEOUT="30",
             ANKIVOICE_DELIVERY_RETRIES="5",
+            ANKIVOICE_VOICE_SIDES="both",
         )
     )
+    assert cfg.voice_sides == "both"
     assert cfg.default_voice == "am_michael"
     assert cfg.lang_code == "b"
     assert cfg.max_cards == 50
@@ -82,6 +86,18 @@ def test_config_is_frozen():
     cfg = load_config(base_env())
     with pytest.raises(Exception):
         cfg.bot_token = "changed"  # type: ignore[misc]
+
+
+def test_voice_sides_is_case_insensitive_and_trimmed():
+    # operator-friendly: accept any case / surrounding whitespace, normalize to lower
+    assert load_config(base_env(ANKIVOICE_VOICE_SIDES=" Both ")).voice_sides == "both"
+    assert load_config(base_env(ANKIVOICE_VOICE_SIDES="BACK")).voice_sides == "back"
+
+
+def test_voice_sides_invalid_raises_configerror():
+    # only "back" and "both" are valid; anything else is a clear configuration error
+    with pytest.raises(ConfigError):
+        load_config(base_env(ANKIVOICE_VOICE_SIDES="left"))
 
 
 def test_does_not_read_real_process_env(monkeypatch):

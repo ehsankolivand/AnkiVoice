@@ -1,9 +1,11 @@
 """T015 — Anki packaging (load-bearing). FR-013..016, FR-031. research.md Decision 3."""
 
+import hashlib
 import json
 import shutil
 import sqlite3
 import tempfile
+import time
 import zipfile
 
 import pytest
@@ -12,11 +14,15 @@ import genanki
 
 from ankivoice.packaging import (
     AFMT,
+    AFMT_BOTH,
     DECK_ID,
     MODEL_ID,
+    MODEL_ID_BOTH,
     QFMT,
+    QFMT_BOTH,
     MediaCard,
     _build_model,
+    _build_model_both,
     build_apkg,
     output_name,
 )
@@ -151,6 +157,107 @@ def test_build_apkg_rejects_card_audio_without_matching_media(tmp_path):
     out = tmp_path / "mismatch.apkg"
     with pytest.raises(ValueError, match="audio"):
         build_apkg([MediaCard("F", "B", "absent.mp3")], [m], out, deck_name="d")
+
+
+def _read_notes_flds(apkg_path, tmp_path, fname="read.anki2"):
+    """Return [[field, ...], ...] for every note, in insertion order."""
+    with zipfile.ZipFile(apkg_path) as z:
+        db_name = next(n for n in z.namelist() if n.startswith("collection.anki2"))
+        data = z.read(db_name)
+    dbfile = tmp_path / fname
+    dbfile.write_bytes(data)
+    con = sqlite3.connect(dbfile)
+    try:
+        rows = con.execute("SELECT flds FROM notes ORDER BY id").fetchall()
+        models = json.loads(con.execute("SELECT models FROM col").fetchone()[0])
+    finally:
+        con.close()
+    return [r[0].split("\x1f") for r in rows], models
+
+
+# --- both-sides voicing: a second audio field + a front-audio question template ---
+
+def test_both_model_adds_front_audio_field():
+    m = _build_model_both()
+    assert [f["name"] for f in m.fields] == ["Front", "Back", "Audio", "FrontAudio"]
+    assert MODEL_ID_BOTH != MODEL_ID  # distinct note type so both kinds of decks coexist on import
+
+
+def test_both_templates_front_audio_on_question_back_audio_on_answer():
+    # question side carries the FRONT sound (auto-play on the front + replay button)
+    assert "{{FrontAudio}}" in QFMT_BOTH
+    assert "{{Audio}}" not in QFMT_BOTH       # the back sound is NOT on the question
+    # answer side carries the BACK sound directly (auto-play on reveal + replay button)
+    assert "{{Audio}}" in AFMT_BOTH
+    # the front is brought in via {{FrontSide}} (NOT a direct {{FrontAudio}}), so Anki does NOT
+    # auto-replay the front audio on the answer — verified against the Anki manual (no re-blast)
+    assert "{{FrontSide}}" in AFMT_BOTH
+    assert "{{FrontAudio}}" not in AFMT_BOTH
+
+
+def test_both_mode_apkg_carries_front_and_back_sounds(tmp_path):
+    mf = _write_mp3(tmp_path / "fr.mp3", b"\x01")
+    mb = _write_mp3(tmp_path / "bk.mp3", b"\x02")
+    me = _write_mp3(tmp_path / "eo.mp3", b"\x03")
+    cards = [
+        MediaCard("Question?", "Answer.", "bk.mp3", front_audio_filename="fr.mp3"),
+        MediaCard("", "Lonely answer.", "eo.mp3", front_audio_filename=None),  # empty front
+    ]
+    out = tmp_path / "both.apkg"
+    build_apkg(cards, [mf, mb, me], out, deck_name="d", voice_sides="both")
+
+    flds, models = _read_notes_flds(out, tmp_path)
+    # card 0: 4 fields — front text, back text, back sound (Audio), front sound (FrontAudio)
+    assert flds[0] == ["Question?", "Answer.", "[sound:bk.mp3]", "[sound:fr.mp3]"]
+    # card 1: empty Front → placeholder shown, FrontAudio empty → NO front [sound:] (back-only)
+    assert flds[1] == ["(no prompt — reveal the answer)", "Lonely answer.", "[sound:eo.mp3]", ""]
+    # the 4-field both model is the one used
+    assert any([f["name"] for f in m["flds"]] == ["Front", "Back", "Audio", "FrontAudio"]
+               for m in models.values())
+    # both cards (incl. the empty-Front one) are studyable — the placeholder keeps Front non-empty
+    notes, ncards = _note_and_card_counts(out, tmp_path)
+    assert notes == 2 and ncards == 2
+
+
+def test_both_mode_front_audio_must_be_bundled(tmp_path):
+    # E1 extended to the front side: a front [sound:] with no bundled media is refused
+    mb = _write_mp3(tmp_path / "bk.mp3")
+    with pytest.raises(ValueError, match="audio"):
+        build_apkg(
+            [MediaCard("Q", "A", "bk.mp3", front_audio_filename="absent_front.mp3")],
+            [mb],
+            tmp_path / "x.apkg",
+            deck_name="d",
+            voice_sides="both",
+        )
+
+
+# --- regression: back-only output is byte-identical to the pre-change code ---
+
+# sha256 of collection.anki2 for the deck below, built by the PRE-CHANGE build_apkg with time frozen
+# at 1700000000.0 (the only source of non-determinism). Pins that the back path is untouched: any
+# change to the back model/fields/templates/guids/note structure flips this hash.
+_GOLDEN_BACK_COLLECTION_SHA256 = "d5e52aec48b9e0d429f7e530d5e169e939f4b4ba7e328762512fa3412546f7e5"
+
+
+def test_back_mode_collection_byte_identical_to_pre_change(tmp_path, monkeypatch):
+    monkeypatch.setattr(time, "time", lambda: 1700000000.0)  # freeze genanki's only clock read
+    media = {}
+    for name in ("h1.mp3", "h2.mp3", "h3.mp3"):
+        media[name] = _write_mp3(tmp_path / name, name.encode())
+    cards = [
+        MediaCard("greeting", "Hello there.", "h1.mp3"),
+        MediaCard("ampersand", "Tom &amp; Jerry &#39;run&#39;.", "h2.mp3"),
+        MediaCard("", "Answer without a prompt.", "h3.mp3"),
+        MediaCard("dup", "Hello there.", "h1.mp3"),  # reuses h1 (dedupe), distinct row
+    ]
+    out = tmp_path / "golden.apkg"
+    # default voice_sides ("back") — must reproduce today's bytes exactly
+    build_apkg(cards, [media["h1.mp3"], media["h2.mp3"], media["h3.mp3"]], out, deck_name="golden")
+    with zipfile.ZipFile(out) as z:
+        db_name = next(n for n in z.namelist() if n.startswith("collection.anki2"))
+        col = z.read(db_name)
+    assert hashlib.sha256(col).hexdigest() == _GOLDEN_BACK_COLLECTION_SHA256
 
 
 def test_identical_rows_stay_two_distinct_cards(tmp_path):

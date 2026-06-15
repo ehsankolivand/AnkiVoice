@@ -40,6 +40,9 @@ class Config:
     job_history: int = 500        # max retained terminal job rows (datastore bound)
     ffmpeg_timeout: int = 120     # seconds before an MP3 encode is aborted
     delivery_retries: int = 3     # bounded in-process delivery attempts before deferring to restart
+    # Which side(s) of each card to voice: "back" (default — today's behavior, Back only) or "both"
+    # (Front question + Back answer). The default keeps output byte-identical.
+    voice_sides: str = "back"
 
 
 def _as_int(key: str, value: str) -> int:
@@ -47,6 +50,20 @@ def _as_int(key: str, value: str) -> int:
         return int(value)
     except (TypeError, ValueError):
         raise ConfigError(f"{key} must be an integer, got {value!r}") from None
+
+
+_VOICE_SIDES_CHOICES = ("back", "both")
+
+
+def _as_voice_sides(value: str) -> str:
+    """Normalize ANKIVOICE_VOICE_SIDES (case-insensitive, trimmed) to a valid choice."""
+    normalized = value.strip().lower()
+    if normalized not in _VOICE_SIDES_CHOICES:
+        raise ConfigError(
+            "ANKIVOICE_VOICE_SIDES must be one of "
+            f"{_VOICE_SIDES_CHOICES}, got {value!r}"
+        )
+    return normalized
 
 
 def load_config(env: Mapping[str, str] | None = None) -> Config:
@@ -85,4 +102,5 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         delivery_retries=_as_int(
             "ANKIVOICE_DELIVERY_RETRIES", env.get("ANKIVOICE_DELIVERY_RETRIES", "3")
         ),
+        voice_sides=_as_voice_sides(env.get("ANKIVOICE_VOICE_SIDES", "back")),
     )

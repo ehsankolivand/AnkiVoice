@@ -12,7 +12,11 @@ class Card:
 
     front: str  # original, preserved byte-for-byte for display (FR-012)
     back: str  # original, preserved byte-for-byte for display (FR-012)
-    spoken: str  # cleaned text for synthesis only; never displayed (FR-011)
+    spoken: str  # cleaned Back text for synthesis only; never displayed (FR-011)
+    # Cleaned Front text for synthesis (same clean_for_speech rule as ``spoken``), used only when
+    # voicing BOTH sides. Empty/whitespace ⇒ the card has no Front audio (the empty-Front placeholder
+    # is never voiced). Defaults to "" so back-only construction (and existing call sites) are unchanged.
+    front_spoken: str = ""
 
 
 @dataclass(frozen=True)

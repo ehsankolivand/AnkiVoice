@@ -106,7 +106,10 @@ def parse_deck(raw: bytes, *, max_cards: int) -> ParsedDeck:
         if spoken.strip() == "":
             skipped_empty_back += 1  # Back cleans to whitespace (e.g. "&#32;") → cannot be voiced (A4)
             continue
-        cards.append(Card(front=front, back=back, spoken=spoken))
+        # Cleaned Front spoken form (same transform as the Back). Empty/whitespace ⇒ no Front audio when
+        # voicing both sides; the empty-Front placeholder is never voiced. Display front is untouched.
+        front_spoken = clean_for_speech(fields[0])
+        cards.append(Card(front=front, back=back, spoken=spoken, front_spoken=front_spoken))
 
     if not saw_tab:
         raise ValidationError(
