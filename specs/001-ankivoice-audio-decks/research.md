@@ -19,7 +19,7 @@ identifiers are pinned for implementation (Constitution: verify-don't-guess).
 | soundfile | 0.14.0 (libsndfile 1.2.2) | BSD-3 / LGPL-2.1+ | used only to build an in-memory WAV buffer |
 | numpy | 2.4.6 | BSD-3 | |
 | ffmpeg | 8.1.1 + libmp3lame | LGPL/GPL (invoked as a subprocess → no linking obligation) | MP3 encoder; `apt install ffmpeg` on a VPS |
-| espeak-ng | 1.52.0 | GPL-3.0 (separate binary on PATH) | required by misaki for robust English G2P |
+| espeak-ng | bundled (espeakng_loader) | GPL-3.0 (bundled shared library, loaded in-process — NOT a PATH binary) | required by misaki for robust English G2P |
 
 Dev: pytest 9.1.0, pytest-asyncio 1.4.0, pytest-mock 3.15.1.
 
@@ -63,10 +63,15 @@ An uncached voice fails offline with `LocalEntryNotFoundError`. Cache dir:
 `~/.cache/huggingface/hub/models--hexgrad--Kokoro-82M/...`; configurable via `ANKIVOICE_MODEL_DIR`
 (→ `HF_HOME`). A `scripts/warmup.py` will perform the warm-up.
 
-**espeak-ng is required**: misaki's `EspeakFallback` phonemizes out-of-dictionary words. **Without
-espeak-ng those words are silently dropped from the audio** (verified). Keep `espeak-ng` installed and
-on PATH (`apt install espeak-ng`). Cycle 002 makes this a **fail-fast startup guard** (`preflight.py`):
-the service refuses to start if espeak-ng is missing, so this can never silently corrupt audio.
+**espeak-ng is required (but BUNDLED, cycle 002 correction)**: misaki's `EspeakFallback` phonemizes
+out-of-dictionary words. **misaki loads espeak-ng from a bundled shared library** via the
+`espeakng_loader` dependency (`EspeakWrapper.set_library(espeakng_loader.get_library_path())`), installed
+by `uv sync` — it is NOT a system PATH binary, and synthesis of out-of-dictionary words works with no
+`espeak-ng` on PATH (verified). A genuinely broken/missing bundled phonemizer would drop words; cycle 002
+guards against that with a **fail-fast startup probe** (`preflight.py`) that synthesizes a one-word
+out-of-dictionary token (exercising the espeak fallback) and refuses to start if it fails — rather than
+checking `shutil.which("espeak-ng")`, which would be a false-positive. (Earlier wording said "install
+espeak-ng on PATH"; that was the older misaki behavior.)
 
 **Gotchas**: `__call__` returns a generator (must iterate + concatenate); audio length varies per text
 (never assume fixed length); tensor → numpy before use; not clamped to exactly ±1.
@@ -212,10 +217,10 @@ long-polling); JobQueue for the worker (it's for scheduled jobs, not a persisten
 ## Startup correctness guard (cycle 002, `preflight.py`)
 
 Before accepting any job, `__main__` runs a fail-fast preflight that refuses to start (with a specific
-message) if **espeak-ng** is missing (else the phonemizer silently drops out-of-dictionary words from
-audio — verified below), **ffmpeg** is missing, or the **configured voice/model** is not available
-offline. The voice probe is a one-word real synth that also **prewarms** the model (no cold-start on the
-first job). Skippable with `ANKIVOICE_SKIP_PREFLIGHT`.
+message) if **ffmpeg** is missing from PATH, or the **phonemizer + configured voice/model** cannot
+synthesize a one-word **out-of-dictionary** probe offline (which also **prewarms** the model — no
+cold-start on the first job). espeak-ng is bundled in-process (espeakng_loader), so it is verified via the
+probe, NOT a PATH check. Skippable with `ANKIVOICE_SKIP_PREFLIGHT`.
 
 ## Engine non-determinism (cycle 002, measured)
 

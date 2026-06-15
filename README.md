@@ -41,9 +41,11 @@ exactly one synthesis at a time; every job's files are cleaned up after delivery
 ## Prerequisites
 
 - Python 3.12 and [`uv`](https://docs.astral.sh/uv/).
-- System packages **ffmpeg** (with libmp3lame) and **espeak-ng**, on PATH:
-  - macOS: `brew install ffmpeg espeak-ng`
-  - Debian/Ubuntu: `sudo apt-get install -y ffmpeg espeak-ng`
+- One system package on PATH: **ffmpeg** (with libmp3lame) — it is invoked as a subprocess to encode MP3s.
+  - macOS: `brew install ffmpeg` · Debian/Ubuntu: `sudo apt-get install -y ffmpeg`
+- **espeak-ng does NOT need a separate install**: it is bundled via the `espeakng_loader` dependency
+  (installed by `uv sync`) and loaded in-process by the phonemizer. (A system `espeak-ng` on PATH is not
+  used and not required.)
 - A Telegram bot token from [@BotFather] and an operator-owned archive chat/channel id.
 
 ## Install
@@ -90,11 +92,11 @@ uv run python scripts/warmup.py
 uv run python -m ankivoice          # long-polling; no public TLS / inbound port needed
 ```
 
-On startup the service runs a **fail-fast guard**: if `espeak-ng` or `ffmpeg` is missing from PATH, or
-the configured voice/model is not cached for offline use, it exits immediately with a specific message
-(rather than producing silently-wrong audio). A missing `espeak-ng` in particular would otherwise drop
-out-of-dictionary words from the audio with no error. Run the warm-up once (above) to cache the
-model/voice. Set `ANKIVOICE_SKIP_PREFLIGHT=1` to bypass the guard in dev.
+On startup the service runs a **fail-fast guard**: if `ffmpeg` is missing from PATH, or the phonemizer /
+configured voice / model cannot synthesize offline (verified by a one-word out-of-dictionary probe that
+also prewarms the model), it exits immediately with a specific message rather than producing
+silently-wrong audio or failing on the first job. Run the warm-up once (above) to cache the model/voice.
+Set `ANKIVOICE_SKIP_PREFLIGHT=1` to bypass the guard in dev.
 
 ## Tests
 
@@ -123,5 +125,6 @@ the real engines end-to-end and is deselected by default.
 ## License & attribution
 
 Uses Kokoro-82M and voices (Apache-2.0), genanki (MIT), python-telegram-bot (LGPL-3.0, used unmodified
-as a dependency), and ffmpeg/espeak-ng (invoked as separate processes). See
+as a dependency), ffmpeg (invoked as a separate subprocess), and espeak-ng (GPL-3.0, bundled in-process
+as a shared library via the `espeakng_loader` dependency). See
 [`research.md`](specs/001-ankivoice-audio-decks/research.md) for the full dependency/license rundown.

@@ -6,9 +6,10 @@ This guide proves the feature works end-to-end. It does **not** duplicate implem
 ## Prerequisites
 
 - Python 3.12 + [`uv`](https://docs.astral.sh/uv/).
-- System packages: **ffmpeg** (with libmp3lame) and **espeak-ng**, on PATH.
-  - macOS: `brew install ffmpeg espeak-ng`
-  - Debian/Ubuntu VPS: `sudo apt-get install -y ffmpeg espeak-ng`
+- System package **ffmpeg** (with libmp3lame) on PATH — invoked as a subprocess to encode MP3s.
+  - macOS: `brew install ffmpeg` · Debian/Ubuntu VPS: `sudo apt-get install -y ffmpeg`
+  - **espeak-ng is bundled** via the `espeakng_loader` dependency (installed by `uv sync`) and loaded
+    in-process — no separate install / PATH entry needed (cycle 002).
 - Install deps: `uv sync`
 - A Telegram bot token (from @BotFather) and an operator-owned archive chat/channel id.
 

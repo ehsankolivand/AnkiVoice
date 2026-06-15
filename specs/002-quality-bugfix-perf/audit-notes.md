@@ -71,9 +71,15 @@ Today `python -m ankivoice` starts fine and produces corrupt audio with no error
 is only caught lazily at first encode (#14), and an uncached configured model/voice fails the first job
 offline with a generic error (#5), and the model loads lazily inside the first job (#17, no prewarm).
 FIX: a new `preflight.py` run from `__main__` before `run_polling()` that fails fast with specific
-messages if: espeak-ng not on PATH; ffmpeg not on PATH; or the configured Kokoro weights + configured
-voice are not available offline. Probing the model also prewarms it (resolves #17). This is a correctness
-guard, not deployment tooling.
+messages if: ffmpeg not on PATH; or the phonemizer + configured voice/model cannot synthesize offline.
+Probing the model also prewarms it (resolves #17). This is a correctness guard, not deployment tooling.
+
+**Self-review correction (#0, verified):** misaki loads espeak-ng from a **bundled** shared library via
+`espeakng_loader` (`EspeakWrapper.set_library(...)`), NOT a PATH binary — synthesis of out-of-dictionary
+words works with no `espeak-ng` on PATH (verified). So the guard must NOT gate on
+`shutil.which("espeak-ng")` (false-positive refusing a working host). The implemented guard checks ffmpeg
+on PATH and verifies the phonemizer/voice via a one-word **out-of-dictionary** probe synth (which raises
+if the bundled phonemizer is broken) — the correct ground-truth check.
 
 ## D. Concurrency / queue / durability
 
@@ -134,7 +140,7 @@ Hot path = per-sentence Kokoro inference on one core (**93%** of compute; ~700 m
 Measured: batching = 0% gain; double numpy conversion = no-op (audit-rejected). **Cross-job LRU cache
 REJECTED** — constitution forbids "additional databases, caches, or services in v1" and requires flat
 disk; keep per-job sha256 dedupe only. Safe wins applied: **F1** `torch.inference_mode()` wrap
-(audit #6; ~5% per sentence, byte-identical PCM); **F2** memoize the ffmpeg path (audit #15, remove a PATH
+(audit #6; ~5% per sentence; output computation unchanged — engine non-deterministic per call); **F2** memoize the ffmpeg path (audit #15, remove a PATH
 scan per unique sentence); **F3** full-digest filenames (also fixes A3); keep per-job dedupe.
 
 ## G. Doc-drift to reconcile (code is right; fix the artifacts)

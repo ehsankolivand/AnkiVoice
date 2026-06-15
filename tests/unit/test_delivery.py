@@ -2,6 +2,7 @@
 
 import pytest
 
+import ankivoice.delivery as delivery_mod
 from ankivoice.delivery import deliver
 from ankivoice.models import JobState
 from ankivoice.store import JobStore
@@ -71,6 +72,24 @@ async def test_redelivery_after_archive_sent_only_sends_user(tmp_path, fake_send
     assert {d[1] for d in fake_sender.documents} == {700}
     assert store.get(job.id).state == JobState.CLEANED
     assert not (work / f"job_{job.id}").exists()
+
+
+async def test_post_delivered_cleanup_failure_does_not_raise_or_duplicate_ready(tmp_path, fake_sender, monkeypatch):
+    # self-review #1: a cleanup failure AFTER DELIVERED must be swallowed (best-effort) so it cannot
+    # propagate into the worker's retry loop and re-send the "ready" message. The job stays DELIVERED
+    # (resume re-cleans it). Exactly one ready message; deliver() does not raise.
+    work, store, job, apkg = _setup(tmp_path)
+
+    def boom(*a, **k):
+        raise OSError("transient rmtree failure")
+
+    monkeypatch.setattr(delivery_mod, "remove_job_dir", boom)
+    await deliver(job, apkg, sender=fake_sender, store=store, archive_chat_id=999, work_root=work)
+
+    ready = [e for e in fake_sender.events if e[0] == "message" and "ready" in e[2].lower()]
+    assert len(ready) == 1  # exactly one ready message despite the cleanup failure
+    assert store.get(job.id).state == JobState.DELIVERED  # not CLEANED; resume will re-clean
+    assert {d[1] for d in fake_sender.documents} == {999, 700}  # both deck copies sent exactly once
 
 
 async def test_redelivery_when_both_sent_sends_nothing_and_cleans(tmp_path, fake_sender):

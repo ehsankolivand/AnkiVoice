@@ -67,8 +67,8 @@ def test_empty_text_returns_empty_float32(mocker):
 
 
 def test_synthesize_runs_under_inference_mode(mocker):
-    # cycle 002 (audit #6/perf): synthesis runs inside torch.inference_mode() — byte-identical output,
-    # less per-sentence autograd/version bookkeeping.
+    # cycle 002 (audit #6/perf): synthesis runs inside torch.inference_mode() — computation unchanged
+    # (engine non-deterministic per call; byte-equality not claimed), less autograd/version bookkeeping.
     import torch
 
     seen = {}

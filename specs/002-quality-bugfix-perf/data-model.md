@@ -78,7 +78,8 @@ maps to `HF_HOME`.
 
 ## Startup preflight (new transient entity)
 
-`preflight.check_runtime(config)` → raises `PreflightError(message)` naming the first missing of:
-espeak-ng on PATH, ffmpeg on PATH, configured Kokoro weights + configured voice available offline. The
-voice probe is a one-word real synth (also prewarms the model). Skipped iff `ANKIVOICE_SKIP_PREFLIGHT`
-is set. Not persisted; runs once before `run_polling`.
+`preflight.check_runtime(config, synthesizer)` → raises `PreflightError(message)` if ffmpeg is not on
+PATH, or the configured voice/model + phonemizer cannot synthesize a one-word **out-of-dictionary** probe
+offline (which also prewarms the model). espeak-ng is **bundled** (espeakng_loader, loaded in-process by
+misaki), so it is NOT gated on PATH — the probe synthesis is the ground-truth check. Skipped iff
+`ANKIVOICE_SKIP_PREFLIGHT` is set. Not persisted; runs once before `run_polling`.

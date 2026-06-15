@@ -35,7 +35,8 @@ def encode_mp3(samples, sample_rate, out_path, *, quality, timeout: float = 120.
 ```python
 class KokoroSynthesizer:
     def synthesize(self, spoken_text: str) -> FloatArray: ...
-        # consumes the Kokoro generator inside `with torch.inference_mode():` — byte-identical PCM,
+        # consumes the Kokoro generator inside `with torch.inference_mode():` — audio-generation
+        # computation unchanged (engine non-deterministic per call; byte-equality not asserted),
         # slightly less per-sentence overhead (IR-016, perf).
 ```
 
@@ -115,8 +116,11 @@ class Worker:
 ```python
 def build_application(config: Config, store: JobStore, synthesizer) -> Application: ...
     # (signature corrected in the 001 contract: it always took `synthesizer`.)
-    # on_document: store.enqueue_if_no_active(...); if None after saving the upload, delete the orphan
-    #   job dir and message the user (D9).
+    # on_document: store.enqueue_if_no_active(...) is the FIRST step (BEFORE creating any job dir or
+    #   downloading); if it returns None, reply "already have a deck being processed" and return — no dir
+    #   created, nothing to clean. A SEPARATE branch handles a *download* error: it marks FAILED, scoped-
+    #   cleans the reserved job dir, and asks the user to resend (D9). (Reserve-before-download = no orphan
+    #   on the refusal path.)
 ```
 
 ## preflight.py (NEW)
@@ -124,9 +128,11 @@ def build_application(config: Config, store: JobStore, synthesizer) -> Applicati
 ```python
 class PreflightError(Exception): ...
 
-def check_runtime(config: Config) -> None: ...
-    # Raise PreflightError naming the first missing of: espeak-ng (PATH), ffmpeg (PATH),
-    # configured Kokoro weights + configured voice available offline (one-word real synth, also prewarms).
+def check_runtime(config: Config, synthesizer) -> None: ...
+    # Raise PreflightError if: ffmpeg is not on PATH; OR the configured voice/model + phonemizer cannot
+    # synthesize a one-word OUT-OF-DICTIONARY probe offline (which also prewarms the model). NOTE: espeak-ng
+    # is BUNDLED via espeakng_loader and loaded in-process by misaki — NOT a PATH binary — so it is NOT
+    # gated on shutil.which (that would be a false-positive); the probe synthesis is the ground truth.
     # No-op iff ANKIVOICE_SKIP_PREFLIGHT is set. Called by __main__.main() before run_polling. (IR-008..011)
 ```
 
@@ -134,13 +140,15 @@ def check_runtime(config: Config) -> None: ...
 
 ```python
 def main() -> None: ...
-    # load_config -> set offline env -> preflight.check_runtime(config) -> JobStore(...) ->
-    #   build KokoroSynthesizer (reused by preflight prewarm) -> build_application -> run_polling.
+    # load_config -> set offline env -> JobStore(...) -> build KokoroSynthesizer ->
+    #   preflight.check_runtime(config, synthesizer) [SystemExit on PreflightError; reuses/prewarms the
+    #   same synthesizer] -> build_application(config, store, synthesizer) -> run_polling.
 ```
 
 ## bot-interface (user-facing) deltas
 
-- On a refused second active job *after* a download race: the orphan is cleaned and the user gets the
-  same "you already have a deck being processed" message (no change in wording; behavior hardened).
+- A second active job is refused by the atomic `enqueue_if_no_active` BEFORE any download (no orphan); the
+  user gets the "you already have a deck being processed" message. A *download* failure (separate branch)
+  scoped-cleans the reserved dir and asks the user to resend.
 - No new user-visible messages otherwise; delivery retry is transparent (the user still gets exactly one
-  package + one ready message).
+  package + one ready message — the post-DELIVERED cleanup is best-effort so a retry never re-sends it).

@@ -18,9 +18,10 @@ pytestmark = pytest.mark.live
 
 
 def _missing_system_deps() -> str | None:
-    for tool in ("ffmpeg", "espeak-ng"):
-        if shutil.which(tool) is None:
-            return f"{tool} not on PATH"
+    # Only ffmpeg is a genuine PATH dependency (invoked as a subprocess). espeak-ng is BUNDLED via
+    # espeakng_loader and loaded in-process by misaki, so it need not be on PATH (cycle 002).
+    if shutil.which("ffmpeg") is None:
+        return "ffmpeg not on PATH"
     return None
 
 

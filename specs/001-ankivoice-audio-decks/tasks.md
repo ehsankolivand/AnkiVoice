@@ -257,7 +257,7 @@ bot/worker path, the store stays consistent, and no job dir remains.
   run (`uv run python -m ankivoice`), how to run tests (default + `-m live`), the module map, and the
   manual test plan from the brief's handoff.
 - [x] T039 [P] Write `tests/live/test_live_kokoro_apkg.py`: `@pytest.mark.live`, self-skipping (skip if
-  the model/voice are not cached or ffmpeg/espeak-ng are missing) — real `KokoroSynthesizer` → real MP3
+  the model/voice are not cached or ffmpeg is missing; espeak-ng is bundled, not a PATH dep) — real `KokoroSynthesizer` → real MP3
   → `build_apkg` → reopen and validate the `.apkg` end-to-end. Kept out of the default run.
 - [x] T040 Run the full default suite (`uv run pytest`) to green; run quickstart.md validation; confirm
   every load-bearing path has a test and `CLAUDE.md`/README are accurate.

@@ -92,13 +92,15 @@ Every fix traces to a finding ID in [audit-notes.md](./audit-notes.md) and a dec
 **Goal**: refuse to start when it cannot produce correct audio. **Independent test**:
 `tests/unit/test_preflight.py` + `tests/integration/test_main.py`.
 
-- [x] T014 [US2] Write FAILING `tests/unit/test_preflight.py` (audit C1, research D11): with `which`
-  patched to miss espeak-ng → `PreflightError` naming espeak-ng; miss ffmpeg → names ffmpeg; voice probe
-  raising → `PreflightError` naming the voice + warm-up; all present → returns None and the probe synth
-  ran once (prewarm); `ANKIVOICE_SKIP_PREFLIGHT` set → no checks run.
-- [x] T015 [US2] Implement `src/ankivoice/preflight.py` (`PreflightError`, `check_runtime(config)`:
-  espeak-ng + ffmpeg on PATH; one-word real synth with the configured voice to verify+prewarm; honor
-  `ANKIVOICE_SKIP_PREFLIGHT`). Make T014 green.
+- [x] T014 [US2] Write FAILING `tests/unit/test_preflight.py` (audit C1, research D11; self-review #0):
+  miss ffmpeg → `PreflightError` naming ffmpeg; espeak-ng NOT on PATH is FINE (it is bundled via
+  espeakng_loader — must not refuse); probe synth raising (broken phonemizer / uncached voice) →
+  `PreflightError` naming the voice + warm-up; all present → returns None and the probe synth ran once
+  (prewarm); `ANKIVOICE_SKIP_PREFLIGHT` set → no checks run.
+- [x] T015 [US2] Implement `src/ankivoice/preflight.py` (`PreflightError`,
+  `check_runtime(config, synthesizer)`: ffmpeg on PATH; a one-word OUT-OF-DICTIONARY probe synth with the
+  configured voice to verify the phonemizer/voice/model + prewarm; NO espeak-ng PATH gate (bundled);
+  honor `ANKIVOICE_SKIP_PREFLIGHT`). Make T014 green.
 - [x] T016 [US2] Update FAILING `tests/integration/test_main.py`: `main()` calls
   `preflight.check_runtime` before `run_polling` (assert order via patches) and reuses the prewarmed
   synthesizer. Then implement the wiring in `src/ankivoice/__main__.py`. Green.
@@ -156,8 +158,9 @@ Every fix traces to a finding ID in [audit-notes.md](./audit-notes.md) and a dec
 
 ## Phase 7: User Story 5 — Safe performance (Priority: P3)
 
-**Goal**: same-or-faster, byte-identical audio, invariants intact. **Independent test**: `test_audio.py`,
-`test_pipeline.py`, perf re-measure.
+**Goal**: same-or-faster, audio-generation computation unchanged (engine non-deterministic per call →
+byte-equality not asserted), invariants intact. **Independent test**: `test_audio.py`, `test_pipeline.py`,
+`test_speech_wrapper.py`, perf re-measure.
 
 - [x] T027 [P] [US5] Write FAILING `tests/unit/test_audio.py` cases (audit A5/#15, research D5): `encode_mp3`
   accepts/uses a `timeout` and raises a clear error on `TimeoutExpired` (patched); the ffmpeg path is
@@ -165,9 +168,10 @@ Every fix traces to a finding ID in [audit-notes.md](./audit-notes.md) and a dec
 - [x] T028 [US5] Implement `src/ankivoice/audio.py`: memoized ffmpeg path + `subprocess.run(timeout=...)`
   with a clear `RuntimeError` on timeout. Make T027 green.
 - [x] T029 [US5] Implement `torch.inference_mode()` wrap in `src/ankivoice/speech.py.synthesize`
-  (byte-identical output; `tests/unit/test_speech_wrapper.py` stays green — extend if needed).
+  (computation unchanged — engine non-deterministic per call; `tests/unit/test_speech_wrapper.py` pins it).
 - [x] T030 [US5] Re-measure the representative deck (real Kokoro, single core, offline) and record the
-  AFTER numbers + confirm byte-identical audio in `specs/002-quality-bugfix-perf/perf-notes.md`.
+  AFTER numbers in `specs/002-quality-bugfix-perf/perf-notes.md` (build time model-bound/unchanged within
+  noise; engine non-deterministic so byte-equality is not asserted).
 
 **Checkpoint**: safe speedups applied; numbers recorded; no invariant weakened.
 
@@ -216,7 +220,7 @@ Every fix traces to a finding ID in [audit-notes.md](./audit-notes.md) and a dec
 - [x] T039 Run the full default suite `uv run pytest` → GREEN; confirm fast + offline.
 - [x] T040 Run `uv run pytest -m live` → the real Kokoro + real `.apkg` test passes (model is cached).
 - [x] T041 Final adversarial self-review (subagents) over: parser fidelity/no-loss, BOM, startup guard,
-  exactly-once delivery + resume, genanki temp leak, prune, perf (byte-identical + numbers), .apkg
+  exactly-once delivery + resume, genanki temp leak, prune, perf (computation unchanged + numbers), .apkg
   correctness; fix anything confirmed; re-run the suite.
 
 ---

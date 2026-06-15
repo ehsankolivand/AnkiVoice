@@ -75,7 +75,8 @@ class KokoroSynthesizer:
     def synthesize(self, spoken_text: str) -> np.ndarray:
         """Synthesize one sentence to a 1-D mono float32 array (concatenating Kokoro's chunks).
 
-        Inference runs inside ``torch.inference_mode()`` — byte-identical PCM output with less
+        Inference runs inside ``torch.inference_mode()`` — the audio-generation computation is unchanged
+        (the engine is non-deterministic per call, so exact byte-equality is not claimed) with less
         per-sentence autograd/version bookkeeping on the single-core hot path (cycle 002, perf).
         """
         import torch

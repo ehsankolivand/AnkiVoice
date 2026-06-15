@@ -47,7 +47,9 @@ def clean_for_speech(field: str) -> str:
     """Return text suitable for speech: balanced transport-quote unwrap, then HTML entities decoded.
 
     This is the spoken-text transform (FR-011): the same transport decoding applied to the displayed
-    field, plus entity decoding so the audio sounds natural. Idempotent on already-clean text.
+    field, plus entity decoding so the audio sounds natural. Applied exactly once per field; it is not
+    guaranteed idempotent (entity-decoding can yield a balanced quoted string that a second pass would
+    unwrap), so callers apply it once to the raw field.
     """
     return html.unescape(_unwrap_balanced(field))
 

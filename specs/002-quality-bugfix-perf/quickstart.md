@@ -17,9 +17,9 @@ uv run pytest -m live    # opt-in real Kokoro + real .apkg (self-skips if model/
    2 cards; full-digest filename). Manual: import a deck whose answer begins with `"` → the card shows
    the quotes; a BOM-saved export imports without a junk header card.
 2. **US2 — fail-fast startup** (IR-008..011): `tests/unit/test_preflight.py` — with `which` mocked to
-   miss espeak-ng / ffmpeg, or the voice probe failing, `check_runtime` raises `PreflightError` naming
-   it; with all present it returns and the model is warm. Manual: rename `espeak-ng` off PATH →
-   `python -m ankivoice` exits immediately with a specific message.
+   miss ffmpeg, or the probe synth failing, `check_runtime` raises `PreflightError`; espeak-ng absent
+   from PATH does NOT refuse (it is bundled); with all present it returns and the model is warm. Manual:
+   move `ffmpeg` off PATH → `python -m ankivoice` exits immediately with a specific message.
 3. **US3 — flat disk & bounded datastore** (IR-012,013): `tests/unit/test_packaging.py` leak test (no
    temp file outside the job dir after a build+clean) and `tests/unit/test_store.py` prune test
    (terminal rows capped at `ANKIVOICE_JOB_HISTORY`).

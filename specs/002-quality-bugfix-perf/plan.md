@@ -36,7 +36,8 @@ never loaded or contacted). One `@pytest.mark.live` self-skipping test exercises
 
 **Project Type**: single project — long-polling chat-bot service.
 
-**Performance Goals**: same-or-faster on the representative deck with byte-identical audio; no new
+**Performance Goals**: same-or-faster on the representative deck with the audio-generation computation
+unchanged (the engine is non-deterministic per call, so exact byte-equality is not a criterion); no new
 concurrency; synthesis stays serialized and single-core. Measured baseline in perf-notes.md (synthesis
 = 93% of compute, model-bound).
 

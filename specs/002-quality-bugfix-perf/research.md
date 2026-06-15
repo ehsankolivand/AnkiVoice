@@ -23,10 +23,17 @@ field is always balanced) → FR-011 preserved and the existing
 are preserved byte-for-byte → FR-012. This also makes the code match FR-003 / the contract ("split on
 the first TAB") and makes `clean_for_speech` actually perform the unwrap its contract claims.
 
+**Accepted limitation (self-review #6):** because each line is split on TAB into fields, a field that
+*contains* a literal TAB inside balanced quotes (which a strict CSV reader would keep as one field) is
+split mid-field. This is rare in Anki "Notes in Plain Text" exports (fields with a separator TAB are
+uncommon) and is the deliberate cost of guaranteeing one-card-per-row (no silent row loss). Documented
+here and in the spec edge cases rather than re-introducing whole-body CSV parsing.
+
 **Alternatives rejected**: keep `csv.reader` (causes silent row loss — the original bug);
 `csv.QUOTE_NONE` over the body (would never unwrap genuine transport quotes, breaking FR-011);
-preserving multi-line quoted fields by spanning lines (the rare gain is not worth re-introducing the
-catastrophic row-merge; Anki "Notes in Plain Text" uses HTML `<br>`, not raw newlines, inside fields).
+preserving multi-line/quoted-TAB fields by spanning lines / strict CSV (the rare gain is not worth
+re-introducing the catastrophic row-merge; Anki "Notes in Plain Text" uses HTML `<br>`, not raw newlines
+or literal tabs, inside fields).
 
 ## D2 — UTF-8 BOM stripping (audit A2)
 
@@ -128,13 +135,14 @@ has no dedupe primitive we can rely on).
 
 **Decision**: add `store.enqueue_if_no_active(...)` performing the active-check and insert in one
 transaction (a `BEGIN IMMEDIATE` guarded conditional insert), returning `None` if the user already has
-an active job. `bot.on_document` uses it; on `None` after a download it deletes the orphaned job dir and
-messages the user.
+an active job. `bot.on_document` calls it FIRST (before creating any job dir or downloading); on `None`
+it replies immediately and returns — nothing is created, so there is no orphan to delete. A *download*
+failure is handled by a separate branch that scoped-cleans the reserved dir and asks the user to resend.
 
 **Rationale**: Today correctness relies on PTB's `max_concurrent_updates=1`; the store itself never
 refuses despite data-model.md claiming it does. The atomic method makes the invariant hold in the store
-(belt-and-suspenders, future-proof) and matches the contract. The slot is reserved *before* the download
-(already the case), so no orphan is created on the happy path.
+(belt-and-suspenders, future-proof) and matches the contract. Because the slot is reserved *before* the
+download, a refusal never leaves an orphaned file.
 
 **Alternatives rejected**: rely on the event loop only (fragile to any future threading); a unique
 partial index on `(user_id) WHERE state in active` (SQLite expression-index support is fiddly; an
@@ -155,16 +163,23 @@ prune (unbounded growth — the finding).
 
 ## D11 — Fail-fast startup guard `preflight.py` (audit C1; brief finding C, <correctness_guards>)
 
-**Decision**: new `preflight.check_runtime(config)` that raises a clear `PreflightError` if: `shutil.which("espeak-ng")` is None; `shutil.which("ffmpeg")` is None; or the configured Kokoro
-weights + configured voice are not available offline. The model/voice probe attempts a one-word real
-synth (which both verifies availability AND prewarms the model); under `ANKIVOICE_ALLOW_DOWNLOADS` the
-probe may download. `__main__.main()` calls it after `load_config()` and before `run_polling()`. A
-`ANKIVOICE_SKIP_PREFLIGHT` escape hatch exists for tests/dev.
+**Decision**: new `preflight.check_runtime(config, synthesizer)` that raises a clear `PreflightError`
+if: `shutil.which("ffmpeg")` is None; or the configured voice/model + phonemizer cannot synthesize a
+one-word **out-of-dictionary** probe offline. The probe both verifies availability AND prewarms the
+model; under `ANKIVOICE_ALLOW_DOWNLOADS` it may download. `__main__.main()` calls it after building the
+synthesizer and before `run_polling()`. `ANKIVOICE_SKIP_PREFLIGHT` is the tests/dev escape hatch.
 
-**Rationale**: A missing espeak-ng silently drops out-of-dictionary words from audio (verified,
-research 001:66) — a correctness failure that must be impossible to hit unnoticed. Probing the voice
-also resolves the "first job pays cold-start" issue (prewarm) and the "uncached voice fails the first
-job" issue. This is a correctness guard, not deployment tooling.
+**IMPORTANT correction (self-review #0, verified):** misaki loads `espeak-ng` from a **bundled** shared
+library via the `espeakng_loader` Python dependency (`EspeakWrapper.set_library(...)`), NOT from a PATH
+binary — synthesis of out-of-dictionary words works with no `espeak-ng` on PATH. So the guard does NOT
+gate on `shutil.which("espeak-ng")` (that would be a false-positive refusing a working host). Instead the
+**probe synthesis** (with an out-of-dictionary token, exercising misaki's espeak fallback) is the
+ground-truth check: a broken/missing bundled phonemizer surfaces as the probe raising → `PreflightError`.
+
+**Rationale**: A genuinely broken phonemizer or an uncached voice/model would otherwise corrupt audio or
+fail late, unnoticed. Probing also resolves the "first job pays cold-start" issue (prewarm). This is a
+correctness guard, not deployment tooling. (The earlier "espeak-ng on PATH" framing came from older
+misaki that used the system binary; this install bundles it.)
 
 **Alternatives rejected**: lazy detection (today's behavior — corrupts silently / fails late); a static
 HF-cache path check only (doesn't prewarm and is brittle to cache layout — a tiny real synth is the
@@ -176,7 +191,8 @@ ground truth).
 full-digest filenames (D4), and **keep per-job sha256 dedupe**. **Reject** the cross-job LRU cache.
 
 **Rationale**: Measured: synthesis = 93% of compute and is model-bound on one core (batching = 0% gain;
-the model already uses `@torch.no_grad()` so inference_mode is small but free and byte-identical). The
+the model already uses `@torch.no_grad()` so inference_mode is small but free; the audio-generation
+computation is unchanged (the engine is non-deterministic per call regardless)). The
 cross-job cache is the only thing that could help cross-deck repeats but is forbidden by the constitution
 (no additional caches in v1; flat disk). So the safe wins are redundant-work removal + the existing
 dedupe. See [perf-notes.md](./perf-notes.md) for before/after.

@@ -35,19 +35,24 @@ def _which_all_present(name):
     return f"/usr/bin/{name}"
 
 
-def test_missing_espeak_ng_raises_naming_it(monkeypatch):
-    monkeypatch.setattr(preflight.shutil, "which", lambda n: None if n == "espeak-ng" else f"/bin/{n}")
-    with pytest.raises(PreflightError, match="espeak-ng"):
-        check_runtime(_config(), _ProbeSynth())
-
-
 def test_missing_ffmpeg_raises_naming_it(monkeypatch):
     monkeypatch.setattr(preflight.shutil, "which", lambda n: None if n == "ffmpeg" else f"/bin/{n}")
     with pytest.raises(PreflightError, match="ffmpeg"):
         check_runtime(_config(), _ProbeSynth())
 
 
-def test_uncached_voice_raises_naming_voice_and_warmup(monkeypatch):
+def test_espeak_ng_not_on_path_is_fine(monkeypatch):
+    # cycle 002 (self-review #0): misaki uses a BUNDLED espeak-ng (espeakng_loader), not a PATH binary.
+    # The guard must NOT refuse startup just because `espeak-ng` is absent from PATH — only the probe
+    # synthesis (which exercises the real phonemizer) is the ground truth.
+    monkeypatch.setattr(preflight.shutil, "which", lambda n: f"/bin/{n}" if n == "ffmpeg" else None)
+    synth = _ProbeSynth()  # phonemizer works
+    check_runtime(_config(), synth)  # must NOT raise
+    assert len(synth.calls) == 1
+
+
+def test_broken_phonemizer_or_uncached_voice_raises_with_warmup_hint(monkeypatch):
+    # The probe synth raising (broken bundled espeak lib OR uncached voice/model offline) → refuse start.
     monkeypatch.setattr(preflight.shutil, "which", _which_all_present)
     synth = _ProbeSynth(fail=True)
     with pytest.raises(PreflightError) as ei:

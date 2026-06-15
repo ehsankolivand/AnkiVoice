@@ -111,9 +111,9 @@ dependency; with all present, startup proceeds (and the model is warm before the
 
 **Acceptance Scenarios**:
 
-1. **Given** the speech phonemizer is not available on the host, **When** the service starts, **Then**
-   it stops immediately with a specific message naming the phonemizer and how to install it, and never
-   accepts a job.
+1. **Given** the speech phonemizer cannot phonemize (e.g. its bundled library is missing/broken), **When**
+   the service starts, **Then** it stops immediately with a specific message identifying the speech-engine
+   problem and how to fix it (re-run the warm-up / reinstall deps), and never accepts a job.
 2. **Given** the audio encoder is not available, **When** the service starts, **Then** it stops
    immediately with a specific message naming the encoder.
 3. **Given** the configured voice or speech model is not cached for offline use, **When** the service
@@ -182,17 +182,18 @@ times before the job is left for restart.
 
 ### User Story 5 - Faster on the representative deck where it is safe (Priority: P3)
 
-A learner submits a typical deck. After this increment the service produces the same package, with
-byte-identical audio, at least as fast as before and measurably faster on the redundant-work paths,
-without ever weakening the single-core, offline, flat-disk, or content-fidelity guarantees.
+A learner submits a typical deck. After this increment the service produces the same package, with the
+audio-generation computation unchanged (the engine is non-deterministic per call, so exact byte-equality
+is not asserted), at least as fast as before and measurably faster on the redundant-work paths, without
+ever weakening the single-core, offline, flat-disk, or content-fidelity guarantees.
 
 **Why this priority**: Throughput on a single core is bounded by the speech engine and cannot be traded
 against correctness or the resource budget; the only acceptable speedups are removing redundant work.
 This is valuable but strictly subordinate to correctness and the resource bound.
 
 **Independent Test**: On the recorded representative deck, compare before/after wall-clock for package
-production; confirm the audio bytes are unchanged and no invariant (single core, offline, flat disk,
-fidelity) is weakened.
+production; confirm the audio-generation path is unchanged (engine non-deterministic per call, so
+byte-equality is not asserted) and no invariant (single core, offline, flat disk, fidelity) is weakened.
 
 **Acceptance Scenarios**:
 

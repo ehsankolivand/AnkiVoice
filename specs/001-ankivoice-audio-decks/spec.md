@@ -312,8 +312,9 @@ service continues running, and no residual files remain.
   original Back text (preserved, displayed), cleaned spoken text (derived from Back, not displayed),
   and the generated audio for the Back sentence.
 - **Job**: One unit of work for one Submission by one user. Attributes: owning user, arrival order /
-  queue position, lifecycle state (queued → synthesizing → packaging → uploading → delivered →
-  cleaned, or failed), and a scoped working area on the server. At most one active Job per user; at
+  queue position, lifecycle state (queued → synthesizing → uploading → delivered → cleaned, or failed;
+  cycle 002 merged the former separate packaging step into synthesizing), per-copy delivery flags
+  (archive-sent, user-sent), and a scoped working area on the server. At most one active Job per user; at
   most one Job synthesizing at a time.
 - **Deck Package (Output)**: The Anki package produced for a Job — the importable file containing the
   cards (original text) and the bundled audio media, delivered to the archive and the user.

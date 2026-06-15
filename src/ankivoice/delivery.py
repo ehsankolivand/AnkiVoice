@@ -73,6 +73,15 @@ async def deliver(
         await sender.send_message(job.chat_id, READY_MESSAGE)
     except Exception:
         logger.warning("ready-message send failed for job %s; proceeding to cleanup", job.id)
-    # 4) only now remove the job's working dir, scoped (FR-023, FR-025, P5).
-    remove_job_dir(Path(work_root) / f"job_{job.id}", work_root=work_root)
-    store.set_state(job.id, JobState.CLEANED)
+    # 4) scoped cleanup — also BEST-EFFORT once the job is durably DELIVERED. A cleanup error here MUST
+    #    NOT propagate, or the worker's bounded-retry loop would re-enter deliver() and re-send the
+    #    "ready" message (the deck copies are already flag-gated, so only the cosmetic message would
+    #    duplicate). If cleanup fails, the job stays DELIVERED and worker.resume() re-cleans it at the
+    #    next restart (cycle 002, self-review #1).
+    try:
+        remove_job_dir(Path(work_root) / f"job_{job.id}", work_root=work_root)
+        store.set_state(job.id, JobState.CLEANED)
+    except Exception:
+        logger.exception(
+            "post-delivery cleanup failed for job %s; left DELIVERED for resume to re-clean", job.id
+        )

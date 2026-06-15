@@ -19,8 +19,8 @@ Decision order (first match wins):
    (FR-006, SC-009)
 2. **User already has an active job** — checked-and-reserved **atomically** (one transaction) before any
    download, so two near-simultaneous uploads from the same user can never both start a job (cycle 002).
-   → reply: *"You already have a deck being processed. I'll get to one at a time — please wait for it
-   to finish before sending another."* No job created. (FR-020)
+   → reply: *"You already have a deck being processed — I work on one at a time. Please wait for it to
+   finish before sending another."* No job created. (FR-020)
 3. **Accepted** — reserve the slot, save the upload into the job working dir, reply with queue position:
    → *"Got it! Your deck is #K in line. I'll send it back when it's ready."* (FR-018, SC-005)
    If the download itself fails, the reserved job dir is scoped-cleaned and the user is asked to resend
@@ -32,7 +32,7 @@ On a validation error the user gets the specific friendly message and the job en
 | Code | Message (example) |
 |------|-------------------|
 | `WRONG_FORMAT` | *"I couldn't read that as a tab-separated Anki export. Each line should be `Front⇥Back` (a TAB between the two columns)."* (FR-004) |
-| `EMPTY` | *"That file has no usable cards — every row needs a Back (answer) sentence."* (FR-005, FR-008) |
+| `EMPTY` | *"That file has no usable cards — every card needs a Back (answer) sentence."* (FR-005, FR-008) |
 | `TOO_MANY_CARDS` | *"That deck has too many cards (limit: N). Please split it into smaller decks."* (FR-007) |
 
 ## Result delivery

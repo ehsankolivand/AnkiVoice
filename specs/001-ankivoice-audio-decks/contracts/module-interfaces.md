@@ -231,9 +231,10 @@ def build_application(config: Config, store: JobStore, synthesizer) -> Applicati
 class PreflightError(Exception): ...
 
 def check_runtime(config: Config, synthesizer) -> None: ...
-    # Raise PreflightError (naming the missing item) if espeak-ng is not on PATH, ffmpeg is not on PATH,
-    # or the configured voice/model cannot synthesize offline (a one-word probe that also PREWARMS the
-    # model). No-op if ANKIVOICE_SKIP_PREFLIGHT is set. Called by __main__ before run_polling.
+    # Raise PreflightError if ffmpeg is not on PATH, OR the configured voice/model + phonemizer cannot
+    # synthesize a one-word OUT-OF-DICTIONARY probe offline (which also PREWARMS the model). espeak-ng is
+    # BUNDLED (espeakng_loader, in-process) — NOT gated on PATH (that would false-positive); the probe is
+    # the ground truth. No-op if ANKIVOICE_SKIP_PREFLIGHT is set. Called by __main__ before run_polling.
 ```
 
 ## `__main__.py` — entrypoint
