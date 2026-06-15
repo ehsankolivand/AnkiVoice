@@ -22,7 +22,10 @@ Deployment/easy-install is OUT OF SCOPE this cycle.
 - [x] /speckit-clarify DONE → 5 decisions self-resolved + encoded in spec.md Clarifications; plan still consistent; checklist 16/16
 - [x] /speckit-tasks DONE → tasks.md (T001..T041, test-first, by story US1..US6)
 - [x] /speckit-analyze DONE → 100% coverage, 0 critical/high, 3 LOW (C1 fixed: config→foundational T006b); constitution clean
-- [~] /speckit-implement (fixes + regression tests + reconcile 001 artifacts + guard + opt)
+- [~] /speckit-implement: US1 (parser/pipeline/packaging) DONE; US2 (preflight/main) DONE; US3
+  (temp-leak/prune) DONE; US4 (delivery idempotency/retry/atomic enqueue) DONE; US5 (audio timeout/
+  memoize/inference_mode; perf reconciled — Kokoro non-deterministic, "byte-identical" dropped) DONE.
+  Suite 110 green. NEXT: US6 reconcile 001 artifacts; Polish (field-count test, full suite, live test, self-review).
 - [ ] Self-review (parallel)
 - [ ] Commit + handoff
 

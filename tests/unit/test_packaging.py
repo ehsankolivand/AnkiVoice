@@ -8,12 +8,15 @@ import zipfile
 
 import pytest
 
+import genanki
+
 from ankivoice.packaging import (
     AFMT,
     DECK_ID,
     MODEL_ID,
     QFMT,
     MediaCard,
+    _build_model,
     build_apkg,
     output_name,
 )
@@ -85,6 +88,15 @@ def test_notes_contain_sound_tag_and_preserve_original_text(tmp_path):
         con.close()
     assert "[sound:a.mp3]" in flds  # bare filename inside the sound tag
     assert "Tom &amp; Jerry &#39;run&#39;." in flds  # entities preserved exactly
+
+
+def test_note_field_count_mismatch_raises(tmp_path):
+    # Pins the genanki field-count guard (the model has 3 fields: Front, Back, Audio). A note with the
+    # wrong number of fields must raise — protecting our 3-field notes (001 tasks.md T015).
+    deck = genanki.Deck(DECK_ID, "d")
+    deck.add_note(genanki.Note(model=_build_model(), fields=["only-front", "only-back"]))  # 2 != 3
+    with pytest.raises(Exception):
+        genanki.Package(deck).write_to_file(str(tmp_path / "bad.apkg"))
 
 
 def test_missing_media_file_raises(tmp_path):

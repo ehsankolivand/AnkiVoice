@@ -63,7 +63,7 @@ satisfied by design; no violations, so Complexity Tracking is empty.
 | Principle | How the design satisfies it | Verdict |
 |---|---|---|
 | **I. Resource-Bounded** | Single worker; one synthesis at a time via `asyncio.to_thread`; `torch.set_num_threads(1)`; model loaded once; per-sentence streaming + per-job dedupe; durable queue absorbs bursts; `MAX_CARDS`/`MAX_FILE_BYTES` caps; scoped cleanup keeps disk flat. | PASS |
-| **II. Agent-Native** | 12 single-responsibility modules (config, errors, models, parser, speech, audio, packaging, store, cleanup, delivery, worker, bot) each independently testable; small explicit interfaces (contracts/module-interfaces.md). | PASS |
+| **II. Agent-Native** | 14 single-responsibility modules (config, errors, models, parser, speech, audio, packaging, pipeline, store, cleanup, delivery, worker, bot, and — cycle 002 — preflight) each independently testable; small explicit interfaces (contracts/module-interfaces.md). | PASS |
 | **III. Additive, Non-Breaking** | End-to-end pipeline test guards ingest→synthesize→package→deliver; every story ships with tests; new work extends modules behind their interfaces. | PASS |
 | **IV. Local-First, Offline** | Kokoro on CPU, offline after warm-up (`HF_HUB_OFFLINE=1`); no cloud TTS; user text only ever sent to the requesting user + operator archive. | PASS |
 | **V. Always Clean Up, Scoped** | `cleanup.remove_job_dir` asserts the target is inside `WORK_DIR` (resolved, no symlink escape) and removes only the job dir; runs on success and failure; never deletes outside scope. | PASS |
@@ -110,7 +110,8 @@ src/ankivoice/
 ├── cleanup.py         # remove_job_dir(): scoped deletion guarantee (load-bearing)
 ├── delivery.py        # deliver(): archive→user→clean; Sender Protocol (load-bearing)
 ├── worker.py          # Worker: single FCFS synthesis loop + delivery overlap (load-bearing)
-└── bot.py             # PTB Application, handlers, TelegramSender, worker wiring
+├── bot.py             # PTB Application, handlers, TelegramSender, worker wiring
+└── preflight.py       # cycle 002: fail-fast startup guard (espeak-ng + ffmpeg + voice/model offline)
 
 scripts/
 └── warmup.py          # one-time online download of weights + voices + spaCy model
@@ -176,7 +177,7 @@ model, restart-resume tradeoff, and resolved config defaults. All verified again
 ## Phase 1 — Design & Contracts
 
 Complete: [data-model.md](./data-model.md) (Job entity, JobState machine, invariants, queue position),
-[contracts/module-interfaces.md](./contracts/module-interfaces.md) (the 12 module interfaces),
+[contracts/module-interfaces.md](./contracts/module-interfaces.md) (the module interfaces),
 [contracts/bot-interface.md](./contracts/bot-interface.md) (user-facing chat contract),
 [quickstart.md](./quickstart.md) (run + validation). Agent context (`CLAUDE.md`) updated to point at
 this plan.

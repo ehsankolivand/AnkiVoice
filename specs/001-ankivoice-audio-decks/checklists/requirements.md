@@ -32,7 +32,7 @@
 ## Notes
 
 - All 16 quality items pass on the first validation iteration.
-- 30 functional requirements (FR-001..FR-030), 10 measurable success criteria (SC-001..SC-010),
+- 31 functional requirements (FR-001..FR-031), 10 measurable success criteria (SC-001..SC-010),
   4 prioritized user stories (P1, P2, P3, P3), each independently testable.
 - Zero `[NEEDS CLARIFICATION]` markers; all defaults resolved into the Assumptions section.
 - Domain nouns "Anki" and "the chat bot" are intentional problem-domain terms, not implementation

@@ -165,18 +165,31 @@ service continues running, and no residual files remain.
 
 - **Header lines**: Leading lines beginning with `#` (e.g. `#separator:tab`, `#html:true`) are
   recognized as Anki export headers and skipped, not treated as cards.
-- **Quote-wrapped fields**: Fields wrapped in surrounding quotes are unwrapped for speech; the
-  displayed text still reflects the user's original field.
+- **Quote-wrapped fields**: A field that is a complete *balanced* transport-quoted field (surrounding
+  quotes with doubled inner quotes, as a normal export produces) is unwrapped — for both display and
+  speech — to the value a normal import would show. A field that merely *begins* with a quote
+  (hand-edited, not balanced) is preserved verbatim, including its quotes.
+- **Leading / unbalanced quote**: An answer beginning with a quote never causes following rows to be
+  swallowed (parsing is line by line) and never has its literal quotes stripped from the display (cycle
+  002 fix).
 - **HTML entities**: Entities such as `&amp;` or `&#39;` are decoded for speech so the audio sounds
-  natural; the displayed field is preserved exactly.
-- **Empty Back on a row**: A row whose Back value is empty cannot be voiced; it is skipped and
-  counted. If skipping leaves zero usable cards, the input is treated as empty/invalid.
-- **Empty Front on a row**: A row with an empty Front but a non-empty Back is still a usable card
-  (only the Back is required); the front simply shows nothing.
-- **Row without a TAB**: A data row containing no TAB has no Back and is skipped and counted. If no
-  data row contains a TAB at all, the whole input is rejected as wrong-format (not tab-separated).
-- **Non-UTF-8 bytes**: Input is decoded as UTF-8; bytes that cannot be decoded are rejected as
-  wrong-format with a friendly message.
+  natural; the displayed field keeps them exactly.
+- **Empty Back on a row**: A row whose Back is empty — or cleans to whitespace (e.g. only an encoded
+  space) — cannot be voiced; it is skipped and counted. If skipping leaves zero usable cards, the input
+  is treated as empty/invalid.
+- **Empty Front on a row**: A row with an empty Front but a non-empty Back is still a usable card (only
+  the Back is required). Because Anki does not generate a card whose question side renders empty, the
+  empty Front is shown as a fixed neutral placeholder (`(no prompt — reveal the answer)`) so the card is
+  studyable and its audio plays. This is a deliberate, recorded deviation from "shows nothing" (cycle
+  002; verified against genanki).
+- **Row without a TAB**: A data row containing no TAB has no Back and is skipped and counted. If no data
+  row contains a TAB at all, the whole input is rejected as wrong-format (not tab-separated).
+- **Line endings**: `\r\n` and lone `\r` are normalized to a single `\n` (transport normalization, not a
+  rewrite).
+- **Byte-order mark**: A leading UTF-8 BOM is stripped so header detection and the first field are
+  correct (cycle 002 fix).
+- **Non-UTF-8 bytes**: Input is decoded as UTF-8 (BOM-tolerant); bytes that cannot be decoded are
+  rejected as wrong-format with a friendly message.
 - **Duplicate sentences**: Two cards with identical answer sentences each get correct audio for that
   sentence (identical sentences sound identical).
 - **Restart mid-job**: A deck that was queued or mid-processing when the service stopped is resumed
@@ -198,9 +211,11 @@ service continues running, and no residual files remain.
   chat bot.
 - **FR-002**: The system MUST skip leading header lines that begin with `#` (Anki export headers) and
   not treat them as cards.
-- **FR-003**: The system MUST read each data row as a Front field and a Back field (split on the
-  first TAB), where the Back field is the complete answer sentence. The Front MAY be empty; only the
-  Back is required for a usable card. Additional columns beyond Front/Back, if present, are ignored.
+- **FR-003**: The system MUST read each data row, **line by line**, as tab-separated fields, taking the
+  first field as Front and the second field as Back (the complete answer sentence); additional fields
+  beyond Front/Back, if present, are ignored. The Front MAY be empty; only the Back is required for a
+  usable card. Parsing line by line guarantees one card per usable row — input rows are never merged
+  (cycle 002 reconciliation; see specs/002-quality-bugfix-perf/).
 - **FR-004**: The system MUST decode the input as UTF-8 and MUST reject, with a clear and specific
   message, an input that cannot be decoded or in which no data row contains a TAB (i.e. not
   tab-separated).
@@ -220,11 +235,17 @@ service continues running, and no residual files remain.
   (answer) sentence of every usable card.
 - **FR-010**: The system MUST generate audio only for the Back (answer) side, never for the Front
   (prompt) side.
-- **FR-011**: Before voicing, the system MUST produce clean spoken text by decoding HTML entities and
-  removing CSV-style surrounding quotes from the Back field.
-- **FR-012**: The system MUST preserve the user's original card text exactly (byte-for-byte) for
-  display; it MUST NOT rewrite, reword, or alter the user's field text. Audio is added, nothing else
-  changes.
+- **FR-011**: Before voicing, the system MUST produce clean spoken text by removing CSV-style transport
+  quoting from the Back field (only when the field is a complete balanced quoted field — surrounding
+  quotes with doubled inner quotes) and then decoding HTML entities.
+- **FR-012**: The system MUST preserve the user's card text for display as **the field value a normal
+  import would show** — i.e. byte-for-byte after transport decoding: a complete balanced transport-quoted
+  field is unwrapped (its doubled inner quotes collapsed), line endings are normalized to a single LF
+  (`\n`), and a leading byte-order mark is stripped; otherwise the field's characters are preserved
+  exactly. The system MUST NOT rewrite, reword, or otherwise alter the user's field text beyond this
+  transport decoding. Audio is added; nothing else changes. (Transport quoting, line-ending variants,
+  and a BOM are file-format transport, not content; normalizing them is faithful, not a rewrite — cycle
+  002 reconciliation.)
 
 **Packaging & playback behavior**
 
@@ -303,8 +324,9 @@ service continues running, and no residual files remain.
   native-accent audio of the answer sentence when the answer is revealed, and every card's replay
   control plays that audio again.
 - **SC-002**: The delivered package imports into Anki with zero import errors for every valid export.
-- **SC-003**: 100% of cards display the user's original answer text byte-for-byte unchanged (audio is
-  added; no text is rewritten).
+- **SC-003**: 100% of cards display the user's answer text exactly as a normal import would show it —
+  byte-for-byte after transport decoding (balanced transport quotes unwrapped, line endings normalized
+  to LF, BOM stripped); no text is reworded or rewritten (audio is added only).
 - **SC-004**: When two files arrive within the same few seconds, the second deck's synthesis begins
   only after the first deck's synthesis finishes, and at no point are two syntheses running at once.
 - **SC-005**: Each sender receives a queue-position acknowledgement promptly after sending a valid

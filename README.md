@@ -32,6 +32,7 @@ Small, single-responsibility modules under `src/ankivoice/` (Constitution P2 —
 | `delivery.py` | Deliver to archive → user, then scoped cleanup; retain on failure. |
 | `worker.py` | The single synthesis worker (one at a time; delivery overlaps next synth). |
 | `bot.py` | Telegram long-polling handlers + sender + worker wiring. |
+| `preflight.py` | Fail-fast startup guard: refuses to start if espeak-ng/ffmpeg are missing or the configured voice/model is not cached offline. |
 | `__main__.py` | Entrypoint. |
 
 The flow: **ingest → synthesize → package → deliver**, serialized through the SQLite queue with
@@ -68,6 +69,11 @@ Copy `.env.example` to `.env` and fill it in (or export the variables). Required
 | `ANKIVOICE_DB_PATH` | `./data/ankivoice.db` | SQLite job store. |
 | `ANKIVOICE_MODEL_DIR` | (HF default cache) | Optional offline model cache (sets `HF_HOME`). |
 | `ANKIVOICE_MP3_QUALITY` | `4` | ffmpeg VBR quality. |
+| `ANKIVOICE_JOB_HISTORY` | `500` | Max retained terminal job rows (datastore bound). |
+| `ANKIVOICE_FFMPEG_TIMEOUT` | `120` | Seconds before an MP3 encode is aborted. |
+| `ANKIVOICE_DELIVERY_RETRIES` | `3` | Bounded in-process delivery attempts before deferring to restart. |
+| `ANKIVOICE_SKIP_PREFLIGHT` | (unset) | Skip the startup guard (tests/dev only). |
+| `ANKIVOICE_ALLOW_DOWNLOADS` | (unset) | Permit model downloads at startup; else the process runs fully offline. |
 
 ## One-time offline warm-up
 
@@ -83,6 +89,12 @@ uv run python scripts/warmup.py
 ```bash
 uv run python -m ankivoice          # long-polling; no public TLS / inbound port needed
 ```
+
+On startup the service runs a **fail-fast guard**: if `espeak-ng` or `ffmpeg` is missing from PATH, or
+the configured voice/model is not cached for offline use, it exits immediately with a specific message
+(rather than producing silently-wrong audio). A missing `espeak-ng` in particular would otherwise drop
+out-of-dictionary words from the audio with no error. Run the warm-up once (above) to cache the
+model/voice. Set `ANKIVOICE_SKIP_PREFLIGHT=1` to bypass the guard in dev.
 
 ## Tests
 

@@ -65,7 +65,8 @@ An uncached voice fails offline with `LocalEntryNotFoundError`. Cache dir:
 
 **espeak-ng is required**: misaki's `EspeakFallback` phonemizes out-of-dictionary words. **Without
 espeak-ng those words are silently dropped from the audio** (verified). Keep `espeak-ng` installed and
-on PATH (`apt install espeak-ng`). This is a deployment dependency, documented in the README.
+on PATH (`apt install espeak-ng`). Cycle 002 makes this a **fail-fast startup guard** (`preflight.py`):
+the service refuses to start if espeak-ng is missing, so this can never silently corrupt audio.
 
 **Gotchas**: `__call__` returns a generator (must iterate + concatenate); audio length varies per text
 (never assume fixed length); tensor → numpy before use; not clamped to exactly ±1.
@@ -130,8 +131,13 @@ field-count guard was observed raising `ValueError`.
 - Inside `[sound:...]` use the **bare basename only**; the filesystem path goes in `media_files`; the
   basename must match. A path inside `[sound:...]` makes Anki show literal text instead of playing.
 - Keep `[sound:]` **out of `qfmt`** (else it auto-plays on the front).
-- Use **deterministic** `model_id`/`deck_id` and a **stable per-note `guid`** (e.g. derived from a
-  deck+content hash) so re-imports update rather than duplicate.
+- Use **deterministic** `model_id`/`deck_id` and a **per-row `guid`** derived from **deck stem + row
+  index + content** (`guid_for(deck_name, str(index), front, back, audio_filename)`). This keeps two
+  identical export rows as **distinct** cards (the row index differs) while re-importing the **same
+  unchanged file** updates in place rather than duplicating (the guid is stable). Accepted, recorded
+  trade-offs: renaming the file (the deck stem changes) or editing a card's text yields new cards on
+  re-import. (Cycle 002 reconciliation — supersedes the earlier "content-hash" wording, which would
+  have collapsed identical rows.)
 - Note field count must equal Model field count (3 here).
 - genanki 0.13.1 writes the legacy `collection.anki2` name — imports fine in modern Anki.
 - Anki fields are HTML; the user's exported field is preserved verbatim (FR-012). We do **not**
@@ -194,28 +200,48 @@ long-polling); JobQueue for the worker (it's for scheduled jobs, not a persisten
   Single-threaded DB access (one connection, WAL, `busy_timeout`) → no cross-thread sqlite issues.
 - **One worker coroutine** drives jobs FCFS; the heavy Kokoro+ffmpeg work runs in a **thread**
   (`asyncio.to_thread`) one job at a time. `torch.set_num_threads(1)` bounds CPU (P1).
-- **Per-job dedupe cache**: within a deck, identical `spoken` strings (keyed by `sha256(spoken)`)
-  synthesize once. Cache is per-job (lives in the job dir) → keeps disk flat (P5); no cross-job cache.
-- **Restart-resume (FR-021, SC-010)**: on startup, *rebuildable* in-progress jobs
-  (`synthesizing/packaging/uploading`) are reset to `queued` and rebuilt from the persisted input
-  file; `delivered`-but-uncleaned jobs are cleaned (not requeued) so they are never re-delivered.
-  Tradeoff: a crash *mid-delivery* (after a copy is sent but before the job is marked `delivered`) can
-  re-send the package on resume — a rare duplicate to the archive and/or user, accepted as harmless
-  (cleanup only runs after both uploads succeed; the common window is an archive-only duplicate).
+- **Per-job dedupe cache**: within a deck, identical `spoken` strings (keyed by full `sha256(spoken)`)
+  synthesize once. Cache is per-job (lives in the job dir) → keeps disk flat (P5); **no cross-job
+  cache** (cycle 002 confirmed this is required by the constitution's "no additional caches in v1").
+- **Restart-resume (FR-021, SC-010) — exactly-once (cycle 002)**: on startup, *rebuildable* in-progress
+  jobs (`synthesizing/uploading`, plus any legacy `packaging`) are reset to `queued` and rebuilt from
+  the persisted input file; `delivered`-but-uncleaned jobs are cleaned (not requeued). Per-job
+  `archive_sent`/`user_sent` flags persist across the requeue, so `deliver()` re-sends **only the copy
+  that had not yet gone out** — the earlier "rare mid-delivery duplicate" tradeoff is now **eliminated**.
 
-## Known limitations (v1, from the adversarial self-review)
+## Startup correctness guard (cycle 002, `preflight.py`)
 
-- **Failed delivery holds the user's active slot until the next restart.** If both the package is
-  built but a delivery upload fails (e.g. the user blocked the bot), the job is retained, not deleted
-  (FR-026), and re-delivered when the service next restarts (FR-021). Per FR-020 the user keeps one
-  active job until then. A periodic in-process retry sweep was deliberately *not* added (it needs a
-  distinct non-active retry state and risks re-delivering jobs that are merely mid-delivery) — out of
-  scope for v1.
+Before accepting any job, `__main__` runs a fail-fast preflight that refuses to start (with a specific
+message) if **espeak-ng** is missing (else the phonemizer silently drops out-of-dictionary words from
+audio — verified below), **ffmpeg** is missing, or the **configured voice/model** is not available
+offline. The voice probe is a one-word real synth that also **prewarms** the model (no cold-start on the
+first job). Skippable with `ANKIVOICE_SKIP_PREFLIGHT`.
+
+## Engine non-determinism (cycle 002, measured)
+
+Kokoro produces **different PCM on each call** for the same text (maxdiff ≈0.06–0.13), with the same
+variance with or without `torch.inference_mode()`. So **byte-identical audio is not a meaningful
+criterion**; the perf goal is that the audio-generation *computation* is unchanged. Display TEXT is fully
+deterministic and exactly preserved. `inference_mode` is kept (best practice; removes residual autograd
+bookkeeping). MP3 filenames, the per-note guid, and dedupe all key on TEXT, so they stay stable despite
+audio variance.
+
+## Known limitations (v1, after cycle 002)
+
+- **Failed delivery → bounded in-process retry, then restart.** A transient delivery failure is retried
+  a small bounded number of times with backoff (`ANKIVOICE_DELIVERY_RETRIES`, default 3); if it still
+  fails the job is retained (FR-026) and re-delivered on the next restart — and thanks to the per-copy
+  flags, only the missing copy is re-sent. The user keeps one active slot until then (FR-020).
 - **Empty-Front placeholder.** An Anki card whose question side renders empty is not generated, so an
   empty Front (allowed, FR-003) is shown as a neutral placeholder ("(no prompt — reveal the answer)")
   so the card is studyable and its audio plays. Non-empty Fronts are preserved verbatim (FR-012).
-- **Multiline answer fields** are normalized for line endings; embedded newlines inside a quoted field
-  are preserved by the csv reader, but lone `\r`/`\r\n` are normalized to `\n`.
+- **Line endings & BOM** are normalized (transport): lone `\r`/`\r\n` → `\n`; a leading UTF-8 BOM is
+  stripped (`utf-8-sig`). Parsing is line by line, so a raw embedded newline inside a quoted field is not
+  spanned across lines (Anki uses HTML `<br>` for in-field breaks) — a deliberate, accepted trade-off
+  that guarantees one card per usable row.
+- **ffmpeg encode timeout** (`ANKIVOICE_FFMPEG_TIMEOUT`, default 120 s) bounds a stuck encoder so it
+  cannot hang the single worker. genanki's temp DB is written inside the job dir so scoped cleanup
+  removes it (disk stays flat). Terminal job rows are pruned to `ANKIVOICE_JOB_HISTORY` (default 500).
 
 ## Resolved configuration defaults (operator-overridable; shipped in `.env.example`)
 
@@ -228,5 +254,11 @@ long-polling); JobQueue for the worker (it's for scheduled jobs, not a persisten
 | `ANKIVOICE_WORK_DIR` | `./work` | Root for `job_<id>/` dirs (cleaned after delivery). |
 | `ANKIVOICE_DB_PATH` | `./data/ankivoice.db` | The only datastore. |
 | `ANKIVOICE_MODEL_DIR` | unset → HF default cache | Set `HF_HOME` for a pinned offline cache. |
+| `ANKIVOICE_MP3_QUALITY` | `4` | ffmpeg VBR quality (clear speech, small size). |
+| `ANKIVOICE_JOB_HISTORY` *(cycle 002)* | `500` | Max retained terminal job rows (datastore bound). |
+| `ANKIVOICE_FFMPEG_TIMEOUT` *(cycle 002)* | `120` | Seconds before an MP3 encode is aborted. |
+| `ANKIVOICE_DELIVERY_RETRIES` *(cycle 002)* | `3` | Bounded in-process delivery attempts before deferring to restart. |
+| `ANKIVOICE_SKIP_PREFLIGHT` *(cycle 002)* | unset | Skip the startup guard (tests/dev). |
+| `ANKIVOICE_ALLOW_DOWNLOADS` | unset | If set, permit model downloads at startup (e.g. warm-up); else the process defaults `HF_HUB_OFFLINE`/`TRANSFORMERS_OFFLINE` to `1`. |
 | (fixed) sample rate | `24000` Hz | Kokoro output rate. |
 | (fixed) MP3 args | `-ac 1 -codec:a libmp3lame -qscale:a 4` | Clear speech, small size. |

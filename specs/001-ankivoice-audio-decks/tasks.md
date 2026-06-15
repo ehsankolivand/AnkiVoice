@@ -84,11 +84,13 @@ native-accent audio of the answer on reveal (with a replay button), original tex
 
 ### Parser (load-bearing, test-first)
 
-- [x] T009 [P] [US1] Write FAILING `tests/unit/test_parser.py`: `clean_for_speech` decodes HTML
-  entities + strips one layer of CSV quotes (un-doubles `""`); `parse_deck` skips `#` headers, splits
-  on first TAB (extra columns ignored), allows empty Front, skips+counts empty-Back and no-TAB rows,
-  preserves original Front/Back byte-for-byte, and raises `WRONG_FORMAT` (no TAB anywhere / undecodable
-  UTF-8), `EMPTY` (zero usable), `TOO_MANY_CARDS` (> max).
+- [x] T009 [P] [US1] Write FAILING `tests/unit/test_parser.py`: `clean_for_speech` unwraps a *balanced*
+  transport-quoted field (un-doubles `""`) then decodes HTML entities; `parse_deck` skips `#` headers,
+  parses **line by line** taking the first two tab fields as Front/Back (extra fields ignored, rows never
+  merge), allows empty Front, skips+counts empty-Back / no-TAB / cleans-to-whitespace rows, preserves the
+  displayed field as a normal import would show it (balanced unwrap; BOM stripped; line endings → LF),
+  and raises `WRONG_FORMAT` (no TAB anywhere / undecodable UTF-8), `EMPTY` (zero usable),
+  `TOO_MANY_CARDS` (> max). (Reconciled cycle 002.)
 - [x] T010 [US1] Implement `src/ankivoice/parser.py` to pass T009.
 
 ### Speech wrapper (load-bearing, test-first)
@@ -113,8 +115,11 @@ native-accent audio of the answer on reveal (with a replay button), original tex
 - [x] T015 [P] [US1] Write FAILING `tests/unit/test_packaging.py`: `build_apkg` builds a `.apkg` from
   `MediaCard`s + media paths; unzip it and assert `collection.anki2` + `media` JSON map + numbered
   media files; assert the answer template (`afmt`) contains the audio field and the question template
-  (`qfmt`) does NOT (answer-only auto-play); deterministic `model_id`/`deck_id`; Note field-count guard;
-  `output_name()` derives a safe name from the filename stem with the generic fallback.
+  (`qfmt`) does NOT (answer-only auto-play); deterministic `model_id`/`deck_id`; genanki's Note
+  field-count guard raises on a count mismatch (pinned by `test_note_field_count_mismatch_raises`,
+  added cycle 002); `output_name()` derives a safe name from the filename stem with the generic fallback.
+  (Cycle 002 also: [sound:]↔media basename assertion; per-deck media count = distinct spoken (dedupe),
+  not one-per-card.)
 - [x] T016 [US1] Implement `src/ankivoice/packaging.py` (genanki model/deck/note/package, `[sound:]` in
   `afmt`, bundled media, `output_name`) to pass T015.
 
@@ -122,8 +127,9 @@ native-accent audio of the answer on reveal (with a replay button), original tex
 
 - [x] T017 [P] [US1] Write FAILING `tests/unit/test_pipeline.py`: `build_package(deck_bytes, synth,
   job_dir, …)` parses, synthesizes each UNIQUE `spoken` once (assert `FakeSynthesizer` call count =
-  distinct sentences → dedupe by `sha256(spoken)`), encodes per-card MP3s, builds the `.apkg`; original
-  text preserved; cleaned text used for audio; media count = usable cards.
+  distinct sentences → dedupe by FULL `sha256(spoken)`), encodes per-distinct-sentence MP3s, builds the
+  `.apkg`; original text preserved; cleaned text used for audio; **media count = distinct spoken** (one
+  MP3 per unique sentence, reused across identical cards — not one-per-card). (Reconciled cycle 002.)
 - [x] T018 [US1] Implement `src/ankivoice/pipeline.py` (`build_package`, per-deck dedupe cache) to pass
   T017.
 - [x] T019 [US1] Write `tests/integration/test_pipeline_e2e.py` (the Constitution-VII end-to-end test):
@@ -151,10 +157,12 @@ restart requeues in-progress jobs; handler replies queue position and declines a
   `QUEUED` → `SYNTHESIZING` (FCFS); `set_state`; `queue_position`; `get`; `list_active`.
 - [x] T021 [US2] Implement `src/ankivoice/store.py` core to pass T020.
 - [x] T022 [P] [US2] Write FAILING `tests/integration/test_store_resume.py`: reopening the DB persists
-  jobs; `requeue_in_progress` resets `SYNTHESIZING/PACKAGING/UPLOADING/DELIVERED` → `QUEUED` and leaves
-  `CLEANED/FAILED` terminal.
+  jobs; `requeue_in_progress` resets only *rebuildable* in-progress states (`SYNTHESIZING/UPLOADING`;
+  cycle 002 removed `PACKAGING`) → `QUEUED` and leaves `CLEANED/FAILED` terminal. **`DELIVERED` is NOT
+  requeued** — both copies already went out (the worker cleans delivered-but-uncleaned jobs at startup);
+  re-delivering would double-send. (Reconciled cycle 002 — earlier wording wrongly listed DELIVERED.)
 - [x] T023 [US2] Add `requeue_in_progress` + durable-reopen behavior to `src/ankivoice/store.py` to
-  pass T022.
+  pass T022 (rebuildable = SYNTHESIZING/UPLOADING + legacy 'packaging'; delivery flags preserved).
 
 ### Single worker (load-bearing, test-first)
 
