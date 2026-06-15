@@ -1,0 +1,34 @@
+[Unit]
+Description=AnkiVoice — Telegram audio-deck bot (long-polling)
+Documentation=https://github.com/  (see README.md "Deploy on a Debian/Ubuntu VPS")
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{USER}}
+Group={{USER}}
+WorkingDirectory={{INSTALL_DIR}}
+EnvironmentFile={{INSTALL_DIR}}/.env
+# Pin the offline model cache deterministically (set by install.sh to the SAME dir the warm-up
+# populated) so the offline guarantee never depends on $HOME/XDG resolution at runtime.
+Environment=HF_HOME={{HF_HOME}}
+# Run the project's venv interpreter directly — no dependency on `uv` being on PATH at runtime.
+ExecStart={{INSTALL_DIR}}/.venv/bin/python -m ankivoice
+Restart=on-failure
+RestartSec=5
+# Long enough for an in-flight ~2-min single-core synthesis job to finish or safely park before
+# systemd escalates to SIGKILL. systemd's default KillSignal=SIGTERM already matches PTB's default
+# stop_signals, so no KillSignal override is needed (research D5/D6).
+TimeoutStopSec=300
+# Least-privilege hardening. ProtectSystem=strict makes the filesystem read-only except the listed
+# ReadWritePaths, so the bot can only ever write inside its own install tree (reinforces the
+# constitution's scoped-cleanup guarantee, Principle V).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths={{INSTALL_DIR}}
+
+[Install]
+WantedBy=multi-user.target

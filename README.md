@@ -38,7 +38,48 @@ Small, single-responsibility modules under `src/ankivoice/` (Constitution P2 —
 The flow: **ingest → synthesize → package → deliver**, serialized through the SQLite queue with
 exactly one synthesis at a time; every job's files are cleaned up after delivery (success or failure).
 
-## Prerequisites
+## Deploy on a Debian/Ubuntu VPS (one command)
+
+Go from a clean Debian 12 (bookworm) / Ubuntu LTS host to a running, auto-restarting,
+boot-enabled bot with a single command. You only need two things: a **bot token** (from
+[@BotFather](https://t.me/BotFather) — send `/newbot`, follow the prompts, copy the token) and an
+**archive chat id** (a channel/group the bot is a member of, often negative like `-1001234567890`,
+or your own numeric user id — the bot sends a backup copy of every delivered deck there).
+
+```bash
+# on the VPS, as root (or with sudo):
+git clone <this-repo-url> ankivoice
+cd ankivoice
+sudo ./install.sh --token <BOT_TOKEN> --archive-id <ARCHIVE_CHAT_ID>
+# …or run `sudo ./install.sh` with no value flags and it will prompt for the two values.
+```
+
+That single command: installs `ffmpeg` + `uv`, creates a dedicated `ankivoice` service user and a
+`/opt/ankivoice` install dir, provisions the app (`uv sync`), does the one-time model warm-up so the
+bot then runs **fully offline**, writes a `0600` `.env` (never overwriting an existing one), and
+installs + enables + starts a `systemd` service whose startup self-check must pass. **Re-running it
+is the supported way to update** — it refreshes code/deps and never touches your `.env`.
+
+**System requirements**: Debian 12 / recent Ubuntu LTS, single CPU core, ~4 GB RAM, ~40 GB disk,
+x86_64, outbound internet during install only (the running bot needs no inbound port, no TLS, no
+reverse proxy — it uses outbound long-polling). Other distros are refused with a clear message.
+
+**Operator commands** (copy-paste on the host):
+
+```bash
+journalctl -u ankivoice -f        # view live logs
+systemctl status ankivoice        # status (active / enabled-on-boot)
+systemctl restart ankivoice       # graceful restart (an in-flight deck finishes or safely resumes)
+sudo ./install.sh                 # update (re-run; preserves your .env)
+sudo ./uninstall.sh               # remove the service (app, data, and .env are kept)
+sudo ./uninstall.sh --purge       # ALSO remove the install dir, data, model cache, and the user
+```
+
+Overridable defaults (env or flags): `ANKIVOICE_USER` / `--user` (default `ankivoice`),
+`INSTALL_DIR` / `--prefix` (default `/opt/ankivoice`). Full deploy spec:
+[`specs/003-one-command-deploy/`](specs/003-one-command-deploy/).
+
+## Prerequisites (manual / development install)
 
 - Python 3.12 and [`uv`](https://docs.astral.sh/uv/).
 - One system package on PATH: **ffmpeg** (with libmp3lame) — it is invoked as a subprocess to encode MP3s.
@@ -48,10 +89,10 @@ exactly one synthesis at a time; every job's files are cleaned up after delivery
   used and not required.)
 - A Telegram bot token from [@BotFather] and an operator-owned archive chat/channel id.
 
-## Install
+## Install (manual / development)
 
 ```bash
-uv sync
+uv sync   # provisions the venv; also installs the spaCy en_core_web_sm model (pinned in the lock)
 ```
 
 ## Configure (environment only)
@@ -80,7 +121,10 @@ Copy `.env.example` to `.env` and fill it in (or export the variables). Required
 
 ## One-time offline warm-up
 
-Downloads the model, the default voice, and the spaCy English model so the bot can run offline after:
+Downloads the Kokoro model weights and the default voice so the bot can run offline afterward. (The
+spaCy `en_core_web_sm` G2P model is now installed by `uv sync` — pinned in the lockfile — so the
+warm-up no longer needs to fetch it.) The one-command installer above runs this for you; do it
+manually only for a dev/manual install:
 
 ```bash
 uv run python scripts/warmup.py
