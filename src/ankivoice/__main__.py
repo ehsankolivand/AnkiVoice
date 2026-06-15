@@ -12,6 +12,7 @@ import os
 
 from .bot import build_application
 from .config import load_config
+from .preflight import PreflightError, check_runtime
 from .speech import KokoroSynthesizer
 from .store import JobStore
 
@@ -35,6 +36,15 @@ def main() -> None:
     synthesizer = KokoroSynthesizer(
         voice=config.default_voice, lang_code=config.lang_code, model_dir=config.model_dir
     )
+
+    # Fail fast (and prewarm the model) BEFORE accepting any job: a missing espeak-ng silently corrupts
+    # audio, a missing ffmpeg / uncached voice fails late. Refuse to start with a specific message.
+    try:
+        check_runtime(config, synthesizer)
+    except PreflightError as exc:
+        logging.getLogger("ankivoice").error("Startup preflight failed: %s", exc)
+        raise SystemExit(f"AnkiVoice cannot start: {exc}") from exc
+
     app = build_application(config, store, synthesizer)
     logging.getLogger("ankivoice").info("Starting AnkiVoice (long-polling)…")
     app.run_polling()

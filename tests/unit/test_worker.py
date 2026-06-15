@@ -5,6 +5,7 @@ run fast and offline.
 """
 
 import asyncio
+import dataclasses
 import threading
 
 import numpy as np
@@ -125,6 +126,23 @@ async def test_resume_cleans_delivered_but_uncleaned(tmp_path):
 
     assert store.get(job.id).state == JobState.CLEANED  # cleaned, NOT re-delivered
     assert not job_dir.exists()
+
+
+async def test_resume_prunes_terminal_jobs_to_bound(tmp_path):
+    # cycle 002 (audit D4/IR-013): resume() bounds the job table via prune_terminal_jobs(config.job_history).
+    work = tmp_path / "work"
+    work.mkdir()
+    store = JobStore(tmp_path / "jobs.sqlite")
+    cfg = dataclasses.replace(make_config(tmp_path, work), job_history=2)
+    for _ in range(5):
+        j = store.enqueue(user_id=7, chat_id=1, input_path="/p", original_filename=None)
+        store.set_state(j.id, JobState.CLEANED)
+    worker = Worker(store=store, synthesizer=FakeSynthesizer(), sender=FakeSender(), config=cfg)
+
+    await worker.resume()
+
+    remaining = store._conn.execute("SELECT COUNT(*) AS n FROM jobs").fetchone()["n"]
+    assert remaining == 2  # bounded to job_history
 
 
 async def test_one_synthesis_at_a_time_and_fcfs_under_burst(tmp_path):

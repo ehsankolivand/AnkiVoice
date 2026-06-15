@@ -8,6 +8,7 @@ filesystem path; the note references them by bare basename.
 
 from __future__ import annotations
 
+import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -94,5 +95,14 @@ def build_apkg(
     package = genanki.Package(deck)
     package.media_files = [str(p) for p in media_paths]
     out_path = Path(out_path)
-    package.write_to_file(str(out_path))
+    # genanki's write_to_file uses tempfile.mkstemp() and never removes its temp SQLite DB. Point the
+    # temp dir at the job dir (out_path's parent) for the write so that leftover lands INSIDE the job
+    # dir and is removed by scoped cleanup — keeping disk flat (cycle 002, audit B1). Builds are
+    # serialized (one synthesis/packaging at a time), so this brief global override is safe; restore it.
+    saved_tempdir = tempfile.tempdir
+    tempfile.tempdir = str(out_path.parent)
+    try:
+        package.write_to_file(str(out_path))
+    finally:
+        tempfile.tempdir = saved_tempdir
     return out_path

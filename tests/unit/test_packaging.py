@@ -1,7 +1,9 @@
 """T015 — Anki packaging (load-bearing). FR-013..016, FR-031. research.md Decision 3."""
 
 import json
+import shutil
 import sqlite3
+import tempfile
 import zipfile
 
 import pytest
@@ -114,6 +116,20 @@ def test_empty_front_still_generates_a_studyable_card(tmp_path):
     build_apkg([MediaCard("", "Answer with no prompt.", "a.mp3")], [m], out, deck_name="d")
     notes, cards = _note_and_card_counts(out, tmp_path)
     assert notes == 1 and cards == 1
+
+
+def test_build_apkg_leaves_no_temp_file_outside_job_dir(tmp_path, monkeypatch):
+    # cycle 002 (audit B1): genanki's write_to_file uses tempfile.mkstemp() and never removes the temp
+    # DB. It must land INSIDE the job dir so scoped cleanup removes it — disk stays flat (FR-024/SC-006).
+    iso = tmp_path / "systmp"
+    iso.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(iso))  # isolate the "system" temp dir
+    job = tmp_path / "job_1"
+    job.mkdir()
+    m = _write_mp3(job / "a.mp3")
+    build_apkg([MediaCard("F", "B", "a.mp3")], [m], job / "d.apkg", deck_name="d")
+    shutil.rmtree(job)  # mirror remove_job_dir
+    assert list(iso.iterdir()) == []  # NO leftover temp DB in the system temp dir
 
 
 def test_build_apkg_rejects_card_audio_without_matching_media(tmp_path):

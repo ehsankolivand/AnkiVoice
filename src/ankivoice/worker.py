@@ -50,8 +50,12 @@ class Worker:
         self._delivery_tasks: set[asyncio.Task] = set()
 
     async def resume(self) -> None:
-        """Make a restart safe: requeue rebuildable jobs; clean delivered-but-uncleaned jobs; and
-        abandon uploads that were interrupted before their input was saved (unblocks the user)."""
+        """Make a restart safe: bound the job table; requeue rebuildable jobs; clean
+        delivered-but-uncleaned jobs; and abandon uploads that were interrupted before their input was
+        saved (unblocks the user)."""
+        pruned = self.store.prune_terminal_jobs(keep=self.config.job_history)
+        if pruned:
+            logger.info("resume: pruned %d old terminal job row(s)", pruned)
         requeued = self.store.requeue_in_progress()
         if requeued:
             logger.info("resume: requeued %d interrupted job(s)", requeued)
