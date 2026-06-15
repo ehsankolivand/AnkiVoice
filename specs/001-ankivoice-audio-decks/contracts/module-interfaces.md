@@ -20,11 +20,13 @@ class Config:
     model_dir: Path | None    # local model/voice cache for offline use
     sample_rate: int          # confirmed in research.md
     mp3_quality: str          # encoder setting (research.md)
-    voice_sides: str          # "back" (default — voice the Back only) | "both" (also voice the Front)
+    voice_sides: str          # "both" (PRODUCT default — Front + Back) | "back" (Back only; byte-identical
+    #                           to pre-feature). Field default is "back" (tests); load_config sets "both".
     # (cycle-002 operational limits job_history/ffmpeg_timeout/delivery_retries also present — see 002)
 
 def load_config(env: Mapping[str, str] = os.environ) -> Config: ...
-    # ANKIVOICE_VOICE_SIDES is normalized case-insensitively to "back"|"both"; anything else -> ConfigError.
+    # ANKIVOICE_VOICE_SIDES defaults to "both"; normalized case-insensitively to "back"|"both";
+    # anything else -> ConfigError.
     # Reads ANKIVOICE_* keys. Raises ConfigError listing every missing required key.
     # NEVER hard-codes secrets. Optionally loads a .env file first.
 ```

@@ -74,7 +74,7 @@ A requeued `uploading` job is rebuilt and re-delivered, but `deliver()` skips an
 | `ANKIVOICE_FFMPEG_TIMEOUT` | `120` | Seconds before an MP3 encode is aborted with a clear error (IR-018). |
 | `ANKIVOICE_DELIVERY_RETRIES` | `3` | Bounded delivery attempts (with backoff) before deferring to restart (IR-015). |
 | `ANKIVOICE_SKIP_PREFLIGHT` | unset | Test/dev escape hatch to skip the startup guard (IR-008..011). |
-| `ANKIVOICE_VOICE_SIDES` | `back` | `back` = voice the Back only (default, byte-identical output); `both` = also voice the Front question. Case-insensitive; unknown ⇒ ConfigError. |
+| `ANKIVOICE_VOICE_SIDES` | `both` | `both` = voice the Front question and Back answer (default); `back` = voice the Back only (byte-identical to the original output). Case-insensitive; unknown ⇒ ConfigError. |
 
 Already-present-but-now-documented (audit G12): `HF_HUB_OFFLINE` / `TRANSFORMERS_OFFLINE` are defaulted
 to `1` by the entrypoint unless `ANKIVOICE_ALLOW_DOWNLOADS` is set (e.g. for warm-up). `ANKIVOICE_MODEL_DIR`

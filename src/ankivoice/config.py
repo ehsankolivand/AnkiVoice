@@ -40,8 +40,10 @@ class Config:
     job_history: int = 500        # max retained terminal job rows (datastore bound)
     ffmpeg_timeout: int = 120     # seconds before an MP3 encode is aborted
     delivery_retries: int = 3     # bounded in-process delivery attempts before deferring to restart
-    # Which side(s) of each card to voice: "back" (default — today's behavior, Back only) or "both"
-    # (Front question + Back answer). The default keeps output byte-identical.
+    # Which side(s) of each card to voice. The PRODUCT default is "both" (Front question + Back answer):
+    # load_config defaults ANKIVOICE_VOICE_SIDES to "both". This dataclass field default stays "back"
+    # (Back answer only; byte-identical to the original output) — the conservative value for direct
+    # construction in tests; load_config is authoritative for production (see the cycle-002 note above).
     voice_sides: str = "back"
 
 
@@ -102,5 +104,5 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         delivery_retries=_as_int(
             "ANKIVOICE_DELIVERY_RETRIES", env.get("ANKIVOICE_DELIVERY_RETRIES", "3")
         ),
-        voice_sides=_as_voice_sides(env.get("ANKIVOICE_VOICE_SIDES", "back")),
+        voice_sides=_as_voice_sides(env.get("ANKIVOICE_VOICE_SIDES", "both")),  # product default: both
     )

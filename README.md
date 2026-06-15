@@ -65,7 +65,7 @@ Copy `.env.example` to `.env` and fill it in (or export the variables). Required
 | `ANKIVOICE_ARCHIVE_CHAT_ID` | — (required) | Operator archive destination id. |
 | `ANKIVOICE_DEFAULT_VOICE` | `af_heart` | American-English voice id. |
 | `ANKIVOICE_LANG_CODE` | `a` | `a`=American, `b`=British English. |
-| `ANKIVOICE_VOICE_SIDES` | `back` | `back`=voice the Back answer only; `both`=also voice the Front question. |
+| `ANKIVOICE_VOICE_SIDES` | `both` | `both`=voice the Front question and Back answer; `back`=voice the Back answer only (original output). |
 | `ANKIVOICE_MAX_CARDS` | `200` | Per-job card cap. |
 | `ANKIVOICE_MAX_FILE_BYTES` | `2000000` | Max upload size (bytes). |
 | `ANKIVOICE_WORK_DIR` | `./work` | Per-job working dirs (cleaned after delivery). |

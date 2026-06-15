@@ -155,18 +155,19 @@ def main() -> None: ...
 
 ## both-sides voicing (additive feature, opt-in)
 
-A small, additive change layered on the reconciled 002 behavior: optionally voice BOTH sides of each
-card (Front question + Back answer), not only the Back. Default is unchanged (`back`) and keeps output
-**byte-identical** to today (pinned by a golden `collection.anki2` hash regression). New/changed
-signatures only:
+A small, additive change layered on the reconciled 002 behavior: voice BOTH sides of each card (Front
+question + Back answer), not only the Back. The **product default is `both`**; setting
+`ANKIVOICE_VOICE_SIDES=back` restores the Back-only behavior, whose output stays **byte-identical** to
+pre-feature (pinned by a golden `collection.anki2` hash regression). New/changed signatures only:
 
 ```python
 # config.py
 @dataclass(frozen=True)
 class Config:
     ...
-    voice_sides: str = "back"     # ANKIVOICE_VOICE_SIDES: "back" (default) | "both" (case-insensitive)
-# load_config: _as_voice_sides() normalizes/validates; an unknown value -> ConfigError.
+    voice_sides: str = "back"     # field default "back" (conservative — direct construction in tests);
+# load_config defaults ANKIVOICE_VOICE_SIDES to "both" (the PRODUCT default) and is authoritative for
+# production. _as_voice_sides() normalizes case-insensitively to "back"|"both"; unknown -> ConfigError.
 
 # models.py
 @dataclass(frozen=True)

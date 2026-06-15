@@ -7,13 +7,14 @@ specs/001-ankivoice-audio-decks/plan.md. Both describe one consistent, reconcile
 behaviour; where they discuss the same topic the 002 artifacts are authoritative.
 <!-- SPECKIT END -->
 
-## Both-sides voicing (additive feature)
+## Both-sides voicing
 
-Optionally voice BOTH sides of each card. Set `ANKIVOICE_VOICE_SIDES=both` (default `back` = voice the
-Back answer only, byte-identical to the original output). In `both` mode the Front question is also
-voiced: the question side auto-plays the front audio (with a replay button) and the answer side
-auto-plays the back audio (with a replay button). The answer pulls the front in via `{{FrontSide}}`,
-which Anki does **not** auto-replay, so the front audio never re-blasts on reveal. An empty Front is
-never voiced (the card stays back-only). Identical text on a Front and a Back synthesizes once. Both
-modes use distinct, deterministic note-type ids so the two kinds of deck coexist on import. See
-`specs/002-quality-bugfix-perf/contracts/changes.md` → "both-sides voicing".
+By **default** AnkiVoice voices BOTH sides of each card (`ANKIVOICE_VOICE_SIDES=both`): the Front
+question is voiced in addition to the Back answer. The question side auto-plays the front audio (with a
+replay button) and the answer side auto-plays the back audio (with a replay button). The answer pulls
+the front in via `{{FrontSide}}`, which Anki does **not** auto-replay, so the front audio never
+re-blasts on reveal. An empty Front is never voiced (the card stays back-only). Identical text on a
+Front and a Back synthesizes once. Set `ANKIVOICE_VOICE_SIDES=back` to voice only the Back answer
+(byte-identical to the original output). The two modes use distinct, deterministic note-type ids so the
+two kinds of deck coexist on import. See `specs/002-quality-bugfix-perf/contracts/changes.md` →
+"both-sides voicing".

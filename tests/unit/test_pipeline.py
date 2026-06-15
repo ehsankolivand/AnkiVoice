@@ -61,7 +61,8 @@ def test_media_count_equals_usable_cards(work_dir, fake_synth, sample_deck_bytes
 # --- both-sides voicing (ANKIVOICE_VOICE_SIDES=both) ---
 
 def test_back_mode_default_voices_back_only(work_dir, fake_synth):
-    # default (no voice_sides arg) voices ONLY the Back — today's behavior, unchanged
+    # build_package's builder default (no voice_sides arg) is "back" — voices ONLY the Back. (The
+    # PRODUCT default is "both" via config; the worker always passes config.voice_sides explicitly.)
     raw = b"Question one?\tAnswer one.\n"
     job_dir = work_dir / "job_back"
     job_dir.mkdir()

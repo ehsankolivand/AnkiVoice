@@ -34,8 +34,8 @@ def test_loads_required_and_defaults():
     assert cfg.job_history == 500
     assert cfg.ffmpeg_timeout == 120
     assert cfg.delivery_retries == 3
-    # voice-sides: default voices only the Back (today's behavior)
-    assert cfg.voice_sides == "back"
+    # voice-sides: the product default voices BOTH the Front question and the Back answer
+    assert cfg.voice_sides == "both"
 
 
 def test_overrides_from_env():
